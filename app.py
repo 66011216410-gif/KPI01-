@@ -1,6 +1,5 @@
 import io
 import re
-from pathlib import Path
 
 import pandas as pd
 import streamlit as st
@@ -8,15 +7,15 @@ import streamlit as st
 st.set_page_config(page_title="KPI01 | สถิติผลงานบัณฑิตศึกษา", page_icon="📊", layout="wide")
 
 LEVEL_MAP = {
-    "ป.โท": ["ป.โท", "ปริญญาโท", "โท", "master", "masters", "master's"],
-    "ป.เอก": ["ป.เอก", "ปริญญาเอก", "เอก", "doctor", "doctoral", "phd", "ph.d"],
+    "ป.โท": ["ป.โท", "ปริญญาโท", "ปริญญาโท (ภาคปกติ)", "โท", "master", "masters", "master's"],
+    "ป.เอก": ["ป.เอก", "ปริญญาเอก", "ปริญญาเอก (ภาคปกติ)", "เอก", "doctor", "doctoral", "phd", "ph.d"],
 }
 
 ALIASES = {
-    "level": ["ระดับ", "ระดับการศึกษา", "วุฒิ", "degree", "level"],
+    "level": ["ระดับ", "ระดับการศึกษา", "ระดับปริญญา", "วุฒิ", "degree", "level", "program level"],
     "faculty": ["คณะ", "faculty", "school"],
     "program": ["สาขา", "สาขาวิชา", "หลักสูตร", "program", "major"],
-    "quartile": ["quartile", "q", "ระดับ scopus", "scopus", "คุณภาพวารสาร", "ฐานข้อมูล"],
+    "quartile": ["quartile", "q1", "q2", "ระดับ scopus", "scopus", "คุณภาพวารสาร", "ฐานข้อมูล", "quartile (q)"],
     "student_id": ["รหัสนิสิต", "รหัสนักศึกษา", "student id", "student_id", "id"],
     "title": ["ชื่อผลงาน", "ชื่อบทความ", "ชื่อเรื่อง", "title", "article title", "publication"],
 }
@@ -43,6 +42,7 @@ def find_col(df, aliases):
 
 def normalize_level(v):
     s = clean(v).lower()
+    # ตรวจ ป.เอก ก่อน เพราะคำว่า "เอก" อาจอยู่ในข้อความยาว
     if any(x.lower() in s for x in LEVEL_MAP["ป.เอก"]):
         return "ป.เอก"
     if any(x.lower() in s for x in LEVEL_MAP["ป.โท"]):
@@ -52,52 +52,86 @@ def normalize_level(v):
 
 def normalize_quartile(v):
     s = clean(v).upper().replace(" ", "")
-    m = re.search(r"Q[12]", s)
-    return m.group(0) if m else "อื่น ๆ"
+    m = re.search(r"Q([12])", s)
+    return f"Q{m.group(1)}" if m else "อื่น ๆ"
+
+
+def infer_level_from_row(row):
+    """ใช้เมื่อไฟล์ไม่มีคอลัมน์ชื่อระดับโดยตรง: ค้นหาคำ ป.โท/ป.เอก ในทุกเซลล์ของแถว"""
+    text = " | ".join(clean(v) for v in row.tolist()).lower()
+    if any(x.lower() in text for x in LEVEL_MAP["ป.เอก"]):
+        return "ป.เอก"
+    if any(x.lower() in text for x in LEVEL_MAP["ป.โท"]):
+        return "ป.โท"
+    return "อื่น ๆ"
+
+
+def infer_quartile_from_row(row):
+    """ค้นหา Q1/Q2 ในทุกเซลล์ของแถว กรณีชื่อคอลัมน์ใน Excel ไม่ตรงมาตรฐาน"""
+    for v in row.tolist():
+        q = normalize_quartile(v)
+        if q in ("Q1", "Q2"):
+            return q
+    return "อื่น ๆ"
 
 
 def read_workbook(uploaded):
     uploaded.seek(0)
-    sheets = pd.read_excel(uploaded, sheet_name=None)
+    sheets = pd.read_excel(uploaded, sheet_name=None, header=0)
     candidates = []
     for name, df in sheets.items():
-        if df is not None and not df.empty:
-            df = df.copy()
-            df.columns = [clean(c) for c in df.columns]
-            score = sum(find_col(df, ALIASES[k]) is not None for k in ["level", "faculty", "program", "quartile"])
-            candidates.append((score, name, df))
+        if df is None or df.empty:
+            continue
+        df = df.copy()
+        df.columns = [clean(c) for c in df.columns]
+        # ไม่บังคับชื่อคอลัมน์ระดับอีกต่อไป
+        level_col = find_col(df, ALIASES["level"])
+        quartile_col = find_col(df, ALIASES["quartile"])
+        row_level_hits = int(df.apply(lambda r: infer_level_from_row(r) != "อื่น ๆ", axis=1).sum())
+        row_q_hits = int(df.apply(lambda r: infer_quartile_from_row(r) != "อื่น ๆ", axis=1).sum())
+        score = (5 if level_col else 0) + (5 if quartile_col else 0) + row_level_hits + row_q_hits
+        candidates.append((score, name, df))
     if not candidates:
         raise ValueError("ไม่พบข้อมูลในไฟล์ Excel")
-    return max(candidates, key=lambda x: x[0])[1], max(candidates, key=lambda x: x[0])[2], sheets
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    return candidates[0][1], candidates[0][2], sheets
 
 
 def prepare(df):
     out = df.copy()
     cols = {k: find_col(out, aliases) for k, aliases in ALIASES.items()}
-    if not cols["level"]:
-        raise ValueError("ไม่พบคอลัมน์ระดับการศึกษา เช่น ระดับ / Degree")
-    if not cols["quartile"]:
-        raise ValueError("ไม่พบคอลัมน์ Q1/Q2 เช่น Quartile / Scopus")
 
-    out["__ระดับ"] = out[cols["level"]].map(normalize_level)
-    out["__Quartile"] = out[cols["quartile"]].map(normalize_quartile)
+    # ระดับ: ใช้คอลัมน์ตรงก่อน ถ้าไม่มีให้ตรวจทุกเซลล์ในแต่ละแถว
+    if cols["level"]:
+        out["__ระดับ"] = out[cols["level"]].map(normalize_level)
+    else:
+        out["__ระดับ"] = out.apply(infer_level_from_row, axis=1)
+
+    # Q1/Q2: ใช้คอลัมน์ตรงก่อน ถ้าไม่มีให้ตรวจทุกเซลล์ในแต่ละแถว
+    if cols["quartile"]:
+        out["__Quartile"] = out[cols["quartile"]].map(normalize_quartile)
+        fallback = out["__Quartile"] == "อื่น ๆ"
+        if fallback.any():
+            out.loc[fallback, "__Quartile"] = out.loc[fallback].apply(infer_quartile_from_row, axis=1)
+    else:
+        out["__Quartile"] = out.apply(infer_quartile_from_row, axis=1)
+
     out["__คณะ"] = out[cols["faculty"]].map(clean) if cols["faculty"] else "ไม่ระบุ"
     out["__สาขา"] = out[cols["program"]].map(clean) if cols["program"] else "ไม่ระบุ"
     out["__รหัสนิสิต"] = out[cols["student_id"]].map(clean) if cols["student_id"] else ""
     out["__ชื่อผลงาน"] = out[cols["title"]].map(clean) if cols["title"] else ""
+
+    # ตัดแถวที่เป็นหัวตารางซ้ำหรือไม่มีทั้งระดับและ Q1/Q2
+    out = out[(out["__ระดับ"].isin(["ป.โท", "ป.เอก"])) & (out["__Quartile"].isin(["Q1", "Q2"]))].copy()
     return out, cols
 
 
-def count_publications(g):
-    # 1 แถว = 1 ผลงานเป็นค่าเริ่มต้น; หากมีรหัสนิสิตและผู้ใช้เลือกนับนิสิต
-    return len(g)
-
-
-def make_stats(g, unit="ผลงาน"):
-    rows = []
+def make_stats(g):
+    columns = ["คณะ", "สาขา", "Q1", "Q2", "รวม Q1+Q2", "%Q1", "%Q2"]
     if g.empty:
-        return pd.DataFrame(columns=["คณะ", "สาขา", "Q1", "Q2", "รวม Q1+Q2", "%Q1", "%Q2"])
+        return pd.DataFrame(columns=columns)
 
+    rows = []
     grouped = g.groupby(["__คณะ", "__สาขา"], dropna=False, sort=True)
     for (faculty, program), x in grouped:
         q1 = int((x["__Quartile"] == "Q1").sum())
@@ -113,18 +147,16 @@ def make_stats(g, unit="ผลงาน"):
             "%Q2": round(q2 * 100 / total, 2) if total else 0,
         })
 
-    result = pd.DataFrame(rows)
+    result = pd.DataFrame(rows, columns=columns)
     if not result.empty:
-        total = {
-            "คณะ": "รวมทั้งหมด",
-            "สาขา": "",
-            "Q1": int(result["Q1"].sum()),
-            "Q2": int(result["Q2"].sum()),
-            "รวม Q1+Q2": int(result["รวม Q1+Q2"].sum()),
-        }
-        total["%Q1"] = round(total["Q1"] * 100 / total["รวม Q1+Q2"], 2) if total["รวม Q1+Q2"] else 0
-        total["%Q2"] = round(total["Q2"] * 100 / total["รวม Q1+Q2"], 2) if total["รวม Q1+Q2"] else 0
-        result = pd.concat([result, pd.DataFrame([total])], ignore_index=True)
+        q1 = int(result["Q1"].sum())
+        q2 = int(result["Q2"].sum())
+        total = q1 + q2
+        result.loc[len(result)] = [
+            "รวมทั้งหมด", "", q1, q2, total,
+            round(q1 * 100 / total, 2) if total else 0,
+            round(q2 * 100 / total, 2) if total else 0,
+        ]
     return result
 
 
@@ -152,7 +184,8 @@ def to_excel(stats_master, stats_doctor, level_summary):
     wb = openpyxl.load_workbook(bio)
     fill = PatternFill("solid", fgColor="2F5597")
     font = Font(name="Tahoma", color="FFFFFF", bold=True)
-    border = Border(*( [Side(style="thin", color="D9D9D9")] * 4 ))
+    side = Side(style="thin", color="D9D9D9")
+    border = Border(left=side, right=side, top=side, bottom=side)
     for ws in wb.worksheets:
         ws.freeze_panes = "A2"
         for cell in ws[1]:
@@ -173,18 +206,25 @@ def to_excel(stats_master, stats_doctor, level_summary):
 
 
 st.title("📊 KPI01 — ตารางสถิติผลงานระดับบัณฑิตศึกษา")
-st.caption("สร้างตารางแยก ป.โท และ ป.เอก โดยอ่านข้อมูล Q1/Q2 จาก Excel อัตโนมัติ")
+st.caption("ระบบตรวจจับ ป.โท / ป.เอก และ Q1 / Q2 จากข้อมูลจริง แม้ชื่อคอลัมน์จะไม่ตรงมาตรฐาน")
 
-uploaded = st.file_uploader("อัปโหลดไฟล์ Excel ตาม Sheet ที่ต้องการใช้เป็นต้นแบบ", type=["xlsx", "xls"])
+uploaded = st.file_uploader("อัปโหลดไฟล์ Excel", type=["xlsx", "xls"])
 
 if uploaded:
     try:
         sheet_name, raw, all_sheets = read_workbook(uploaded)
         data, cols = prepare(raw)
 
-        st.success(f"อ่านข้อมูลจาก Sheet: {sheet_name} | {len(data):,} แถว")
-        with st.expander("ตรวจสอบคอลัมน์ที่ระบบจับคู่"):
-            st.json(cols)
+        if data.empty:
+            raise ValueError("ไม่พบแถวข้อมูลที่ตรวจจับได้ว่าเป็น ป.โท/ป.เอก และ Q1/Q2")
+
+        st.success(f"อ่านข้อมูลจาก Sheet: {sheet_name} | พบข้อมูลที่ใช้คำนวณ {len(data):,} แถว")
+        with st.expander("ตรวจสอบการจับคู่ข้อมูล"):
+            st.json({k: (str(v) if v is not None else None) for k, v in cols.items()})
+            st.write("จำนวน ป.โท:", int((data["__ระดับ"] == "ป.โท").sum()))
+            st.write("จำนวน ป.เอก:", int((data["__ระดับ"] == "ป.เอก").sum()))
+            st.write("จำนวน Q1:", int((data["__Quartile"] == "Q1").sum()))
+            st.write("จำนวน Q2:", int((data["__Quartile"] == "Q2").sum()))
 
         level_summary = make_level_summary(data)
         stats_master = make_stats(data[data["__ระดับ"] == "ป.โท"])
@@ -206,8 +246,8 @@ if uploaded:
         excel = to_excel(stats_master, stats_doctor, level_summary)
         st.download_button("📥 ดาวน์โหลด Excel ตารางสถิติ KPI01", excel, "KPI01_สถิติ_ปโท_ปเอก.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-        with st.expander("ข้อมูลต้นฉบับ"):
-            st.dataframe(raw, use_container_width=True, hide_index=True)
+        with st.expander("ข้อมูลที่ระบบนำมาคำนวณ"):
+            st.dataframe(data, use_container_width=True, hide_index=True)
     except Exception as e:
         st.error(str(e))
 else:
