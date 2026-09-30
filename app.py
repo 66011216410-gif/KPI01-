@@ -6,7 +6,8 @@ import streamlit as st
 st.set_page_config(page_title="KPI01 | สถิติผลงานบัณฑิตศึกษา", page_icon="📊", layout="wide")
 
 LEVEL_ALIASES = ["ระดับ", "ระดับการศึกษา", "ระดับปริญญา", "วุฒิ", "degree", "level"]
-QUARTILE_ALIASES = ["ผลงานที่ตีพิมพ์ Q1-Q2", "ผลงานที่ตีพิมพ์Q1-Q2", "ผลงานที่ตีพิมพ์", "quartile", "scopus"]
+PRIMARY_Q_ALIASES = ["ผลงานที่ตีพิมพ์ Q1-Q2", "ผลงานที่ตีพิมพ์Q1-Q2"]
+FALLBACK_Q_ALIASES = ["ฐานข้อมูล"]
 FACULTY_ALIASES = ["คณะ", "faculty", "school"]
 PROGRAM_ALIASES = ["สาขา", "สาขาวิชา", "หลักสูตร", "program", "major"]
 
@@ -32,7 +33,6 @@ def find_col(df, aliases):
 
 def normalize_level(v):
     s = clean(v).lower().replace(" ", "")
-    # ข้อมูลจริงในคอลัมน์ระดับใช้คำว่า ปริญญาโท / ปริญญาเอก
     if "ปริญญาเอก" in s or "ป.เอก" in s or "ph.d" in s or "phd" in s or "doctoral" in s:
         return "ปริญญาเอก"
     if "ปริญญาโท" in s or "ป.โท" in s or "master" in s:
@@ -42,7 +42,6 @@ def normalize_level(v):
 
 def normalize_q(v):
     s = clean(v).upper().replace(" ", "")
-    # รองรับค่า Q1, Q2 รวมถึงข้อความที่มี Q1/Q2 อยู่ภายใน
     if re.search(r"Q1", s):
         return "Q1"
     if re.search(r"Q2", s):
@@ -60,8 +59,10 @@ def read_workbook(uploaded):
         df = df.copy()
         df.columns = [clean(c) for c in df.columns]
         level_col = find_col(df, LEVEL_ALIASES)
-        q_col = find_col(df, QUARTILE_ALIASES)
-        score = (10 if level_col else 0) + (10 if q_col else 0)
+        primary_q_col = find_col(df, PRIMARY_Q_ALIASES)
+        fallback_q_col = find_col(df, FALLBACK_Q_ALIASES)
+        q_col = primary_q_col or fallback_q_col
+        score = (10 if level_col else 0) + (10 if primary_q_col else (5 if fallback_q_col else 0))
         candidates.append((score, name, df))
     if not candidates:
         raise ValueError("ไม่พบข้อมูลในไฟล์ Excel")
@@ -72,39 +73,45 @@ def read_workbook(uploaded):
 def prepare(df):
     out = df.copy()
     level_col = find_col(out, LEVEL_ALIASES)
-    q_col = find_col(out, QUARTILE_ALIASES)
+    primary_q_col = find_col(out, PRIMARY_Q_ALIASES)
+    fallback_q_col = find_col(out, FALLBACK_Q_ALIASES)
+    q_col = primary_q_col or fallback_q_col
     faculty_col = find_col(out, FACULTY_ALIASES)
     program_col = find_col(out, PROGRAM_ALIASES)
 
     if not level_col:
         raise ValueError("ไม่พบคอลัมน์ 'ระดับ'")
     if not q_col:
-        raise ValueError("ไม่พบคอลัมน์ 'ผลงานที่ตีพิมพ์ Q1-Q2'")
+        raise ValueError("ไม่พบคอลัมน์ 'ผลงานที่ตีพิมพ์ Q1-Q2' และไม่พบคอลัมน์สำรอง 'ฐานข้อมูล'")
 
     out["__ระดับ"] = out[level_col].map(normalize_level)
     out["__Q"] = out[q_col].map(normalize_q)
     out["__คณะ"] = out[faculty_col].map(clean) if faculty_col else "ไม่ระบุ"
     out["__สาขา"] = out[program_col].map(clean) if program_col else "ไม่ระบุ"
 
-    # ใช้เฉพาะ ปริญญาโท / ปริญญาเอก และ Q1 / Q2
     out = out[
         out["__ระดับ"].isin(["ปริญญาโท", "ปริญญาเอก"])
         & out["__Q"].isin(["Q1", "Q2"])
     ].copy()
-    return out, {"ระดับ": level_col, "ผลงานที่ตีพิมพ์ Q1-Q2": q_col, "คณะ": faculty_col, "สาขา": program_col}
+
+    return out, {
+        "ระดับ": level_col,
+        "Q1/Q2 ที่ใช้": q_col,
+        "แหล่ง Q1/Q2": "ผลงานที่ตีพิมพ์ Q1-Q2" if primary_q_col else "ฐานข้อมูล",
+        "คณะ": faculty_col,
+        "สาขา": program_col,
+    }
 
 
 def make_stats(g):
     columns = ["คณะ", "สาขา", "Q1", "Q2", "รวม Q1-Q2"]
     if g.empty:
         return pd.DataFrame(columns=columns)
-
     rows = []
     for (faculty, program), x in g.groupby(["__คณะ", "__สาขา"], dropna=False, sort=True):
         q1 = int((x["__Q"] == "Q1").sum())
         q2 = int((x["__Q"] == "Q2").sum())
         rows.append({"คณะ": faculty or "ไม่ระบุ", "สาขา": program or "ไม่ระบุ", "Q1": q1, "Q2": q2, "รวม Q1-Q2": q1 + q2})
-
     result = pd.DataFrame(rows, columns=columns)
     q1 = int(result["Q1"].sum())
     q2 = int(result["Q2"].sum())
@@ -133,7 +140,7 @@ def export_excel(summary, master, doctor):
 
 
 st.title("📊 KPI01 — ตารางสถิติผลงานระดับบัณฑิตศึกษา")
-st.caption("ระดับใช้คอลัมน์ 'ระดับ' และ Q1/Q2 ใช้คอลัมน์ 'ผลงานที่ตีพิมพ์ Q1-Q2'")
+st.caption("ระดับใช้คอลัมน์ 'ระดับ' | Q1/Q2 ใช้ 'ผลงานที่ตีพิมพ์ Q1-Q2' และใช้ 'ฐานข้อมูล' เป็นสำรอง")
 
 uploaded = st.file_uploader("อัปโหลดไฟล์ Excel", type=["xlsx", "xls"])
 
