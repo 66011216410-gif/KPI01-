@@ -5,9 +5,6 @@ import streamlit as st
 
 st.set_page_config(page_title="KPI01 | สถิติผลงานบัณฑิตศึกษา", page_icon="📊", layout="wide")
 
-# =========================
-# ชื่อคอลัมน์ที่รองรับ
-# =========================
 LEVEL_ALIASES = ["ระดับ", "ระดับการศึกษา", "ระดับปริญญา", "วุฒิ", "degree", "level"]
 PRIMARY_Q_ALIASES = ["ผลงานที่ตีพิมพ์ Q1-Q2", "ผลงานที่ตีพิมพ์Q1-Q2"]
 FALLBACK_Q_ALIASES = ["ฐานข้อมูล"]
@@ -76,7 +73,7 @@ def is_success(v):
 
 def read_workbook(uploaded):
     uploaded.seek(0)
-    # หัวคอลัมน์อยู่แถวที่ 2 ของไฟล์ Excel
+    # หัวคอลัมน์อยู่แถวที่ 2 ของ Excel
     sheets = pd.read_excel(uploaded, sheet_name=None, header=1)
     candidates = []
     for name, df in sheets.items():
@@ -87,7 +84,8 @@ def read_workbook(uploaded):
         level_col = find_col(df, LEVEL_ALIASES)
         primary_q_col = find_col(df, PRIMARY_Q_ALIASES)
         fallback_q_col = find_col(df, FALLBACK_Q_ALIASES)
-        score = (10 if level_col else 0) + (10 if primary_q_col else (5 if fallback_q_col else 0))
+        group_col = find_col(df, GROUP_ALIASES)
+        score = (10 if level_col else 0) + (10 if primary_q_col else (5 if fallback_q_col else 0)) + (5 if group_col else 0)
         candidates.append((score, name, df))
     if not candidates:
         raise ValueError("ไม่พบข้อมูลในไฟล์ Excel")
@@ -112,6 +110,8 @@ def prepare(df):
         raise ValueError("ไม่พบคอลัมน์ 'ระดับ' ในแถวที่ 2")
     if not q_col:
         raise ValueError("ไม่พบคอลัมน์ 'ผลงานที่ตีพิมพ์ Q1-Q2' และไม่พบคอลัมน์สำรอง 'ฐานข้อมูล' ในแถวที่ 2")
+    if not group_col and not (faculty_col or program_col):
+        raise ValueError("ไม่พบคอลัมน์ 'กลุ่ม/คณะ/สาขา' สำหรับจัดลำดับตาราง")
 
     out["__ระดับ"] = out[level_col].map(normalize_level)
     out["__Q"] = out[q_col].map(normalize_q)
@@ -119,19 +119,19 @@ def prepare(df):
     out["__รหัสนิสิต"] = out[student_id_col].map(clean) if student_id_col else ""
     out["__สถานะ"] = out[status_col].map(is_success) if status_col else True
 
+    # ใช้ชื่อกลุ่ม/คณะ/สาขาจากต้นฉบับ และเก็บลำดับแถวเดิมไว้
     if group_col:
         out["__กลุ่ม"] = out[group_col].map(clean)
     elif faculty_col and program_col:
         out["__กลุ่ม"] = out[faculty_col].map(clean) + out[program_col].map(lambda x: " / " + clean(x) if clean(x) else "")
     elif faculty_col:
         out["__กลุ่ม"] = out[faculty_col].map(clean)
-    elif program_col:
-        out["__กลุ่ม"] = out[program_col].map(clean)
     else:
-        out["__กลุ่ม"] = "ไม่ระบุ"
+        out["__กลุ่ม"] = out[program_col].map(clean)
 
-    # ข้อมูลระดับปริญญาโท/เอกทั้งหมด
+    out["__ลำดับต้นฉบับ"] = range(len(out))
     out = out[out["__ระดับ"].isin(["ปริญญาโท", "ปริญญาเอก"])].copy()
+
     return out, {
         "ระดับ": level_col,
         "Q1/Q2 ที่ใช้": q_col,
@@ -146,13 +146,13 @@ def prepare(df):
 def unique_count(df):
     if df.empty:
         return 0
-    if "__รหัสนิสิต" in df.columns and df["__รหัสนิสิต"].astype(str).str.strip().ne("").any():
-        return int(df.loc[df["__รหัสนิสิต"].astype(str).str.strip() != "", "__รหัสนิสิต"].nunique())
+    ids = df["__รหัสนิสิต"].astype(str).str.strip()
+    if ids.ne("").any():
+        return int(ids[ids != ""].nunique())
     return int(len(df))
 
 
 def make_kpi_table(data):
-    """สร้างตารางรูปแบบเดียวกับภาพตัวอย่าง"""
     columns = [
         "ลำดับ",
         "กลุ่ม/คณะ/สาขา",
@@ -162,26 +162,29 @@ def make_kpi_table(data):
         "รวมจำนวนผลงานตีพิมพ์ระดับนานาชาติ Q1-Q2",
         "ร้อยละผลงานวิจัยรวมระดับนานาชาติ Q1-Q2",
     ]
-    rows = []
     if data.empty:
         return pd.DataFrame(columns=columns)
 
-    # ผู้สำเร็จการศึกษาใช้สถานะสำเร็จการศึกษา ส่วนผลงานนับจาก Q1/Q2
     graduates = data[data["__สถานะ"]].copy()
     publications = data[data["__Q"].isin(["Q1", "Q2"])].copy()
 
-    groups = sorted(set(graduates["__กลุ่ม"].dropna().astype(str)) | set(publications["__กลุ่ม"].dropna().astype(str)))
-    for idx, group in enumerate(groups, start=1):
+    # สำคัญ: เรียงตามลำดับที่ปรากฏใน Excel เท่านั้น ไม่ sort ตามตัวอักษร
+    ordered_groups = []
+    seen = set()
+    for value in data["__กลุ่ม"].astype(str):
+        value = value.strip()
+        if value and value not in seen:
+            seen.add(value)
+            ordered_groups.append(value)
+
+    rows = []
+    for idx, group in enumerate(ordered_groups, start=1):
         g = graduates[graduates["__กลุ่ม"].astype(str) == group]
         p = publications[publications["__กลุ่ม"].astype(str) == group]
 
-        # A แยกระบบ โดยนับนิสิตไม่ซ้ำถ้ามีรหัสนิสิต
-        in_g = g[g["__ระบบ"] == "ในเวลา"]
-        out_g = g[g["__ระบบ"] == "นอกเวลา"]
-        in_count = unique_count(in_g)
-        out_count = unique_count(out_g)
+        in_count = unique_count(g[g["__ระบบ"] == "ในเวลา"])
+        out_count = unique_count(g[g["__ระบบ"] == "นอกเวลา"])
         total_a = in_count + out_count
-
         pub_count = int(len(p))
         percent = round(pub_count * 100 / total_a, 2) if total_a else 0.0
 
@@ -202,37 +205,27 @@ def make_kpi_table(data):
         total_a = int(result["จำนวนผู้สำเร็จการศึกษา (A)"].sum())
         total_pub = int(result["รวมจำนวนผลงานตีพิมพ์ระดับนานาชาติ Q1-Q2"].sum())
         total_pct = round(total_pub * 100 / total_a, 2) if total_a else 0.0
-        result.loc[len(result)] = [
-            "",
-            "รวมทั้งหมด",
-            total_in,
-            total_out,
-            total_a,
-            total_pub,
-            total_pct,
-        ]
+        result.loc[len(result)] = ["", "รวมทั้งหมด", total_in, total_out, total_a, total_pub, total_pct]
     return result
 
 
 def export_excel(master, doctor):
     from openpyxl import load_workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-    from openpyxl.utils import get_column_letter
 
     bio = io.BytesIO()
     with pd.ExcelWriter(bio, engine="openpyxl") as writer:
         master.to_excel(writer, sheet_name="ปริญญาโท", index=False, startrow=5)
         doctor.to_excel(writer, sheet_name="ปริญญาเอก", index=False, startrow=5)
-
     bio.seek(0)
     wb = load_workbook(bio)
+
     header_fill = PatternFill("solid", fgColor="355E20")
     sub_fill = PatternFill("solid", fgColor="548235")
     white_font = Font(name="Tahoma", color="FFFFFF", bold=True)
     thin = Side(style="thin", color="000000")
 
     for ws in wb.worksheets:
-        # หัวตาราง 3 ชั้น ให้ใกล้เคียงภาพตัวอย่าง
         ws.merge_cells("A1:A3")
         ws["A1"] = "ลำดับ"
         ws.merge_cells("B1:B3")
@@ -246,33 +239,29 @@ def export_excel(master, doctor):
         ws.merge_cells("F1:G1")
         ws["F1"] = "1.2.4 จำนวนผลงานระดับบัณฑิตศึกษาที่สามารถตีพิมพ์ในระดับนานาชาติ SCOPUS Q1-Q2"
         ws.merge_cells("F2:F3")
-        ws["F2"] = "รวมจำนวนผลงานตีพิมพ์ในวารสารระดับนานาชาติ Q1-Q2"
+        ws["F2"] = "รวมจำนวนผลงานตีพิมพ์ระดับนานาชาติ Q1-Q2"
         ws.merge_cells("G2:G3")
-        ws["G2"] = "ร้อยละผลงานวิจัยรวมจำนวนผลงานตีพิมพ์ในวารสารระดับนานาชาติ Q1-Q2"
+        ws["G2"] = "ร้อยละผลงานวิจัยรวมระดับนานาชาติ Q1-Q2"
 
         for row in ws.iter_rows(min_row=1, max_row=3, min_col=1, max_col=7):
             for cell in row:
-                cell.fill = header_fill if cell.row == 1 else sub_fill
+                cell.fill = header_fill
                 cell.font = white_font
                 cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
                 cell.border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-        # ข้อมูลจริงเริ่มแถว 6
-        for row in ws.iter_rows(min_row=6, max_row=ws.max_row, min_col=1, max_col=7):
+        for row in ws.iter_rows(min_row=7, max_row=ws.max_row, min_col=1, max_col=7):
             for cell in row:
-                cell.alignment = Alignment(vertical="center", wrap_text=True)
                 cell.border = Border(left=thin, right=thin, top=thin, bottom=thin)
-            row[0].alignment = Alignment(horizontal="center", vertical="center")
-            for c in [2, 3, 4, 5, 6, 7]:
-                row[c - 1].alignment = Alignment(horizontal="center" if c >= 3 else "left", vertical="center", wrap_text=True)
+                cell.alignment = Alignment(vertical="center", wrap_text=True)
 
-        ws.freeze_panes = "A6"
-        widths = [8, 42, 18, 18, 22, 28, 32]
-        for i, width in enumerate(widths, start=1):
-            ws.column_dimensions[get_column_letter(i)].width = width
-        ws.row_dimensions[1].height = 42
-        ws.row_dimensions[2].height = 60
-        ws.row_dimensions[3].height = 60
+        widths = {"A": 8, "B": 45, "C": 18, "D": 18, "E": 20, "F": 22, "G": 22}
+        for col, width in widths.items():
+            ws.column_dimensions[col].width = width
+        ws.freeze_panes = "A7"
+        ws.row_dimensions[1].height = 45
+        ws.row_dimensions[2].height = 45
+        ws.row_dimensions[3].height = 55
 
     out = io.BytesIO()
     wb.save(out)
@@ -280,11 +269,8 @@ def export_excel(master, doctor):
     return out
 
 
-# =========================
-# หน้าเว็บ
-# =========================
-st.title("📊 KPI01 — ตารางสถิติแบบตัวอย่าง")
-st.caption("หัวคอลัมน์ Excel อยู่แถวที่ 2 | แยกปริญญาโท/ปริญญาเอก | Q1/Q2 ใช้ 'ผลงานที่ตีพิมพ์ Q1-Q2' และใช้ 'ฐานข้อมูล' เป็นสำรอง")
+st.title("📊 KPI01 — ตารางสถิติผลงานระดับบัณฑิตศึกษา")
+st.caption("ลำดับแถว: กลุ่ม → คณะ → สาขา ตามลำดับที่ปรากฏใน Excel | หัวคอลัมน์อยู่แถวที่ 2")
 
 uploaded = st.file_uploader("อัปโหลดไฟล์ Excel", type=["xlsx", "xls"])
 
@@ -292,34 +278,23 @@ if uploaded:
     try:
         sheet_name, raw = read_workbook(uploaded)
         data, cols = prepare(raw)
-
         master = make_kpi_table(data[data["__ระดับ"] == "ปริญญาโท"])
         doctor = make_kpi_table(data[data["__ระดับ"] == "ปริญญาเอก"])
 
-        st.success(f"อ่าน Sheet: {sheet_name} | หัวคอลัมน์แถวที่ 2")
-
-        with st.expander("ตรวจสอบการจับคอลัมน์"):
+        st.success(f"อ่าน Sheet: {sheet_name} | หัวคอลัมน์แถวที่ 2 | เรียง กลุ่ม → คณะ → สาขา ตามต้นฉบับ")
+        with st.expander("ตรวจสอบคอลัมน์"):
             st.write(cols)
-            st.write("ข้อมูลปริญญาโท:", len(data[data["__ระดับ"] == "ปริญญาโท"]))
-            st.write("ข้อมูลปริญญาเอก:", len(data[data["__ระดับ"] == "ปริญญาเอก"]))
 
         tab1, tab2 = st.tabs(["🎓 ปริญญาโท", "🎓 ปริญญาเอก"])
         with tab1:
-            st.subheader("ตารางสถิติ ปริญญาโท")
             st.dataframe(master, use_container_width=True, hide_index=True)
-            st.download_button("ดาวน์โหลด CSV ปริญญาโท", master.to_csv(index=False).encode("utf-8-sig"), "KPI01_ปริญญาโท.csv", "text/csv")
+            st.download_button("ดาวน์โหลด ปริญญาโท CSV", master.to_csv(index=False).encode("utf-8-sig"), "kpi01_master.csv", "text/csv")
         with tab2:
-            st.subheader("ตารางสถิติ ปริญญาเอก")
             st.dataframe(doctor, use_container_width=True, hide_index=True)
-            st.download_button("ดาวน์โหลด CSV ปริญญาเอก", doctor.to_csv(index=False).encode("utf-8-sig"), "KPI01_ปริญญาเอก.csv", "text/csv")
+            st.download_button("ดาวน์โหลด ปริญญาเอก CSV", doctor.to_csv(index=False).encode("utf-8-sig"), "kpi01_doctor.csv", "text/csv")
 
         excel = export_excel(master, doctor)
-        st.download_button(
-            "📥 ดาวน์โหลด Excel รูปแบบเดียวกับตัวอย่าง",
-            excel,
-            "KPI01_ตารางสถิติ_ปโท_ปเอก.xlsx",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+        st.download_button("📥 ดาวน์โหลด Excel KPI01", excel, "KPI01_ปริญญาโท_ปริญญาเอก.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     except Exception as e:
         st.error(str(e))
