@@ -51,7 +51,8 @@ def normalize_q(v):
 
 def read_workbook(uploaded):
     uploaded.seek(0)
-    sheets = pd.read_excel(uploaded, sheet_name=None, header=0)
+    # ข้อมูลจริงมีหัวคอลัมน์อยู่แถวที่ 2 ของ Excel: header=1
+    sheets = pd.read_excel(uploaded, sheet_name=None, header=1)
     candidates = []
     for name, df in sheets.items():
         if df is None or df.empty:
@@ -80,9 +81,9 @@ def prepare(df):
     program_col = find_col(out, PROGRAM_ALIASES)
 
     if not level_col:
-        raise ValueError("ไม่พบคอลัมน์ 'ระดับ'")
+        raise ValueError("ไม่พบคอลัมน์ 'ระดับ' ในแถวหัวตารางที่ 2")
     if not q_col:
-        raise ValueError("ไม่พบคอลัมน์ 'ผลงานที่ตีพิมพ์ Q1-Q2' และไม่พบคอลัมน์สำรอง 'ฐานข้อมูล'")
+        raise ValueError("ไม่พบคอลัมน์ 'ผลงานที่ตีพิมพ์ Q1-Q2' และไม่พบคอลัมน์สำรอง 'ฐานข้อมูล' ในแถวที่ 2")
 
     out["__ระดับ"] = out[level_col].map(normalize_level)
     out["__Q"] = out[q_col].map(normalize_q)
@@ -140,7 +141,7 @@ def export_excel(summary, master, doctor):
 
 
 st.title("📊 KPI01 — ตารางสถิติผลงานระดับบัณฑิตศึกษา")
-st.caption("ระดับใช้คอลัมน์ 'ระดับ' | Q1/Q2 ใช้ 'ผลงานที่ตีพิมพ์ Q1-Q2' และใช้ 'ฐานข้อมูล' เป็นสำรอง")
+st.caption("หัวคอลัมน์อยู่แถวที่ 2 | ระดับใช้คอลัมน์ 'ระดับ' | Q1/Q2 ใช้ 'ผลงานที่ตีพิมพ์ Q1-Q2' และใช้ 'ฐานข้อมูล' เป็นสำรอง")
 
 uploaded = st.file_uploader("อัปโหลดไฟล์ Excel", type=["xlsx", "xls"])
 
@@ -152,7 +153,7 @@ if uploaded:
         master = make_stats(data[data["__ระดับ"] == "ปริญญาโท"])
         doctor = make_stats(data[data["__ระดับ"] == "ปริญญาเอก"])
 
-        st.success(f"อ่าน Sheet: {sheet_name} | ใช้ข้อมูล {len(data):,} แถว")
+        st.success(f"อ่าน Sheet: {sheet_name} | หัวคอลัมน์แถวที่ 2 | ใช้ข้อมูล {len(data):,} แถว")
         with st.expander("ตรวจสอบคอลัมน์"):
             st.write(cols)
             st.write("ปริญญาโท:", int((data["__ระดับ"] == "ปริญญาโท").sum()))
