@@ -2,6 +2,9 @@ import io
 import re
 import pandas as pd
 import streamlit as st
+from openpyxl import load_workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 
 st.set_page_config(page_title="KPI01", page_icon="📊", layout="wide")
 LEVEL=["ระดับ","ระดับการศึกษา","degree"]; Q_MAIN=["ฐานข้อมูล","ฐานข้อมูล "]
@@ -26,7 +29,6 @@ def norm_level(v):
 
 def norm_q(v):
     s=clean(v).upper()
-    # นับเฉพาะรายการที่มีคำว่า SCOPUS (Q1) หรือ SCOPUS (Q2) ในคอลัมน์ฐานข้อมูล
     if "SCOPUS (Q1)" in s or "SCOPUS(Q1)" in s:return "Q1"
     if "SCOPUS (Q2)" in s or "SCOPUS(Q2)" in s:return "Q2"
     return "อื่น ๆ"
@@ -69,18 +71,10 @@ def prepare(df):
     out=out[out["__ระดับ"].isin(["ปริญญาโท","ปริญญาเอก"])].copy()
     return out,{"ระดับ":level_col,"Q1/Q2 ที่ใช้":"ฐานข้อมูล","ระบบ":system_col,"กลุ่ม":group_col,"คณะ":faculty_col,"สาขาที่ใช้":program_total_col or program_col,"รหัสนิสิต":student_col,"สถานะ":status_col}
 
-def unique_students(df):
-    if df.empty:return 0
-    ids=df["__รหัส"].astype(str).str.strip()
-    return int(ids[ids!=""].nunique()) if ids.ne("").any() else len(df)
-
 def metrics(df):
-    # ระบบใน/นอก = จำนวนแถวจากคอลัมน์ ระบบโดยตรง
     inn=int((df["__ระบบ"]=="ในเวลา").sum())
     outn=int((df["__ระบบ"]=="นอกเวลา").sum())
-    # จำนวนผู้สำเร็จการศึกษา (A) = ระบบในเวลา + ระบบนอกเวลา
     a=inn+outn
-    # Q1-Q2 = นับแถวที่คอลัมน์ ฐานข้อมูล มี SCOPUS (Q1) หรือ SCOPUS (Q2)
     pub=int(df["__Q"].isin(["Q1","Q2"]).sum())
     pct=round(pub*100/a,2) if a else 0
     return inn,outn,a,pub,pct
@@ -106,8 +100,40 @@ def hierarchy(data):
 def excel_bytes(master,doctor):
     bio=io.BytesIO()
     with pd.ExcelWriter(bio,engine="openpyxl") as w:
-        master.to_excel(w,sheet_name="ปริญญาโท",index=False,startrow=3);doctor.to_excel(w,sheet_name="ปริญญาเอก",index=False,startrow=3)
-    bio.seek(0);return bio
+        master.to_excel(w,sheet_name="ปริญญาโท",index=False,startrow=6,header=False)
+        doctor.to_excel(w,sheet_name="ปริญญาเอก",index=False,startrow=6,header=False)
+    wb=load_workbook(bio)
+    dark="2F5D1E"; light="5A8C3A"; white="FFFFFF"; peach="FCE4D6"; green="E2F0D9"; grid="808080"
+    thin=Side(style="thin",color=grid); border=Border(left=thin,right=thin,top=thin,bottom=thin)
+    headers={
+        "A1":"ผลงานของนักศึกษาและผู้สำเร็จการศึกษาในระดับปริญญาโท/ปริญญาเอก ปีการศึกษา 2568 รอบ 12 เดือน ข้อมูล ระหว่างเดือนกรกฎาคม 2568 ถึง มิถุนายน 2569",
+    }
+    for ws,level in [(wb["ปริญญาโท"],"ปริญญาโท"),(wb["ปริญญาเอก"],"ปริญญาเอก")]:
+        ws.merge_cells("A1:G1");ws["A1"]=headers["A1"].replace("ปริญญาโท/ปริญญาเอก",level)
+        ws.merge_cells("A2:A6");ws.merge_cells("B2:B6");ws.merge_cells("C2:D2");ws.merge_cells("C3:C6");ws.merge_cells("D3:D6");ws.merge_cells("E2:E6");ws.merge_cells("F2:G2");ws.merge_cells("F3:F6");ws.merge_cells("G3:G6")
+        ws["A2"]="ลำดับ";ws["B2"]="กลุ่ม/คณะ/สาขา";ws["C2"]="ระบบ";ws["C3"]="ระบบในเวลา\nราชการ";ws["D3"]="ระบบนอกเวลา\nราชการ";ws["E2"]="จำนวน\nผู้สำเร็จ\nการศึกษา (A)";ws["F2"]="1.2.4 จำนวนผลงานระดับบัณฑิตศึกษาที่สามารถตีพิมพ์ใน\nระดับนานาชาติ SOPUS Q1-Q2";ws["F3"]="รวมจำนวนผลงานตีพิมพ์\nในวารสารระดับ\nนานาชาติ Q1-2";ws["G3"]="ร้อยละผลงานวิจัยรวมจำนวน\nผลงานตีพิมพ์ในวารสารระดับ\nนานาชาติ Q1-2"
+        for row in range(2,7):
+            for col in range(1,8):
+                c=ws.cell(row,col);c.fill=PatternFill("solid",fgColor=dark if row<=3 else light);c.font=Font(name="Tahoma",size=12,bold=True,color=white);c.alignment=Alignment(horizontal="center",vertical="center",wrap_text=True);c.border=border
+        for row in ws.iter_rows(min_row=7,max_row=ws.max_row,min_col=1,max_col=7):
+            indent=0
+            if len(str(row[1].value or "")) - len(str(row[1].value or "").lstrip()) >= 8: indent=2
+            elif len(str(row[1].value or "")) - len(str(row[1].value or "").lstrip()) >= 4: indent=1
+            is_group=indent==0 and str(row[1].value or "").strip() not in ["รวมทั้งหมด",""]
+            fill=peach if is_group or str(row[1].value or "").strip()=="รวมทั้งหมด" else green
+            for c in row:
+                c.border=border;c.font=Font(name="Tahoma",size=12);c.alignment=Alignment(vertical="center",wrap_text=True)
+                c.fill=PatternFill("solid",fgColor=fill)
+            row[1].alignment=Alignment(horizontal="left",vertical="center",indent=indent,wrap_text=True)
+            for c in row[2:]: c.alignment=Alignment(horizontal="right",vertical="center")
+            if isinstance(row[6].value,(int,float)): row[6].number_format="0.00"
+        ws.column_dimensions["A"].width=9;ws.column_dimensions["B"].width=52;ws.column_dimensions["C"].width=17;ws.column_dimensions["D"].width=19;ws.column_dimensions["E"].width=18;ws.column_dimensions["F"].width=23;ws.column_dimensions["G"].width=27
+        ws.row_dimensions[1].height=30
+        for r in range(2,7): ws.row_dimensions[r].height=38
+        ws.freeze_panes="A7"
+        ws.sheet_view.showGridLines=False
+        for row in range(7,ws.max_row+1): ws.row_dimensions[row].height=26
+    bio2=io.BytesIO();wb.save(bio2);bio2.seek(0);return bio2
 
 st.title("📊 KPI01 — ตารางสถิติ")
 st.caption("หัวคอลัมน์อยู่แถวที่ 2 | ระดับจาก 'ระดับ' | Q1-Q2 นับจาก 'ฐานข้อมูล' เฉพาะ SCOPUS (Q1)/(Q2) | ระบบนับจำนวนแถวจาก 'ระบบ' | A = ในเวลา + นอกเวลา")
