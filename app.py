@@ -147,45 +147,39 @@ def q_summary(data):
 def excel_bytes(master,doctor,summary):
     bio=io.BytesIO()
     with pd.ExcelWriter(bio,engine='openpyxl') as w:
-        master.to_excel(w,sheet_name='ปริญญาโท',index=False,startrow=6,header=False)
-        doctor.to_excel(w,sheet_name='ปริญญาเอก',index=False,startrow=6,header=False)
+        master.to_excel(w,sheet_name='ปริญญาโท',index=False,startrow=3,header=False)
+        doctor.to_excel(w,sheet_name='ปริญญาเอก',index=False,startrow=3,header=False)
         summary.to_excel(w,sheet_name='สรุป Scopus Q1-Q2',index=False,startrow=1)
     wb=load_workbook(bio);dark='2F5D1E';light='5A8C3A';white='FFFFFF';thin=Side(style='thin',color='808080');border=Border(left=thin,right=thin,top=thin,bottom=thin)
     for ws,level in [(wb['ปริญญาโท'],'ปริญญาโท'),(wb['ปริญญาเอก'],'ปริญญาเอก')]:
-        # หัวตารางกลับเป็นรูปแบบเดิม: หัวหลักหลายแถวและ merge เหมือนแบบตัวอย่าง
         ws.merge_cells('A1:G1');ws['A1']=f'ผลงานของนักศึกษาและผู้สำเร็จการศึกษาในระดับ{level}'
-        merges=['A2:A6','B2:B6','C2:D2','C3:C6','D3:D6','E2:E6','F2:G2','F3:F6','G3:G6']
+        merges=['A2:A3','B2:B3','C2:D2','E2:E3','F2:G2']
         for rng in merges:ws.merge_cells(rng)
-        labels={'A2':'ลำดับ','B2':'กลุ่ม/คณะ/สาขา','C2':'ระบบ','C3':'ระบบในเวลา\nราชการ','D3':'ระบบนอกเวลา\nราชการ','E2':'จำนวนผู้สำเร็จ\nการศึกษา (A)','F2':'1.2.4 จำนวนผลงานระดับบัณฑิตศึกษาที่สามารถตีพิมพ์ใน\nระดับนานาชาติ SOPUS Q1-Q2','F3':'รวมจำนวนผลงาน\nตีพิมพ์ในวารสารระดับ\nนานาชาติ Q1-2','G3':'ร้อยละผลงานวิจัยรวมจำนวน\nผลงานตีพิมพ์ในวารสารระดับ\nนานาชาติ Q1-2'}
+        labels={'A2':'ลำดับ','B2':'กลุ่ม/คณะ/สาขา','C2':'ระบบ','C3':'ระบบในเวลาราชการ','D3':'ระบบนอกเวลาราชการ','E2':'จำนวนผู้สำเร็จการศึกษา (A)','F2':'1.2.4 จำนวนผลงานระดับบัณฑิตศึกษาที่สามารถตีพิมพ์ในระดับนานาชาติ SCOPUS Q1-Q2','F3':'รวมจำนวนผลงานตีพิมพ์ระดับนานาชาติ Q1-Q2','G3':'ร้อยละ'}
         for cell,val in labels.items():ws[cell]=val
         for row in ws.iter_rows(min_row=1,max_row=ws.max_row,min_col=1,max_col=7):
             for c in row:
-                c.font=Font(name='Tahoma',size=11)
-                c.alignment=Alignment(vertical='center',horizontal='center',wrap_text=True)
-                c.border=border
+                c.font=Font(name='Tahoma',size=11);c.alignment=Alignment(vertical='center',horizontal='center',wrap_text=True);c.border=border
         for c in ws[1]:c.fill=PatternFill('solid',fgColor=dark);c.font=Font(name='Tahoma',size=14,bold=True,color=white)
-        for r in range(2,7):
-            for c in ws[r]:c.fill=PatternFill('solid',fgColor=dark if r<=2 else light);c.font=Font(name='Tahoma',size=11,bold=True,color=white);c.alignment=Alignment(vertical='center',horizontal='center',wrap_text=True);c.border=border
-        for r in range(7,ws.max_row+1):
-            text=str(ws.cell(r,2).value or '');fill='FCE4D6' if len(text)-len(text.lstrip())==0 else 'E2F0D9'
-            for c in ws[r]:c.fill=PatternFill('solid',fgColor=fill);c.border=border;c.font=Font(name='Tahoma',size=11);c.alignment=Alignment(vertical='center',wrap_text=True)
-            ws.cell(r,2).alignment=Alignment(horizontal='left',vertical='center',wrap_text=True)
-            for c in range(1,8):ws.cell(r,c).alignment=Alignment(horizontal='right' if c>=3 else ('center' if c==1 else 'left'),vertical='center',wrap_text=True)
-            ws.cell(r,7).number_format='0.00'
-        ws.column_dimensions['A'].width=9;ws.column_dimensions['B'].width=55;ws.column_dimensions['C'].width=18;ws.column_dimensions['D'].width=19;ws.column_dimensions['E'].width=20;ws.column_dimensions['F'].width=24;ws.column_dimensions['G'].width=27
-        ws.row_dimensions[1].height=30
-        for r in range(2,7):ws.row_dimensions[r].height=42
-        ws.freeze_panes='A7';ws.sheet_view.showGridLines=False
+        for r in [2,3]:
+            for c in ws[r]:c.fill=PatternFill('solid',fgColor=light);c.font=Font(name='Tahoma',size=11,bold=True,color=white)
+        for col,width in {'A':9,'B':55,'C':22,'D':22,'E':22,'F':28,'G':18}.items():ws.column_dimensions[col].width=width
+        ws.row_dimensions[1].height=30;ws.row_dimensions[2].height=45;ws.row_dimensions[3].height=55
+        ws.freeze_panes='A4';ws.sheet_view.showGridLines=False
     ws=wb['สรุป Scopus Q1-Q2'];ws['A1']='1.2.4) จำนวนผลงานระดับบัณฑิตศึกษาที่ตีพิมพ์ในระดับนานาชาติ Scopus Q1, Q2'
     for c in ws[2]:c.fill=PatternFill('solid',fgColor=dark);c.font=Font(name='Tahoma',size=12,bold=True,color=white);c.alignment=Alignment(horizontal='center');c.border=border
     for row in ws.iter_rows(min_row=3,max_row=5,min_col=1,max_col=4):
         for c in row:c.font=Font(name='Tahoma',size=12);c.alignment=Alignment(horizontal='center' if c.column>1 else 'left');c.border=border
-    ws.column_dimensions['A'].width=28;ws.column_dimensions['B'].width=18;ws.column_dimensions['C'].width=18;ws.column_dimensions['D'].width=18;ws.sheet_view.showGridLines=False
+    for col,width in {'A':28,'B':18,'C':18,'D':18}.items():ws.column_dimensions[col].width=width
+    ws.sheet_view.showGridLines=False
     out=io.BytesIO();wb.save(out);out.seek(0);return out
 
-st.title('📊 KPI01 — ตารางสถิติ');st.caption('ไฟล์ข้อมูลสามารถแยกเป็น 2 Sheet: ปริญญาโท และ ปริญญาเอก | ระบบไม่นับรหัสซ้ำ | A = ในเวลา + นอกเวลา | Q1-Q2 = SCOPUS (Q1)/(Q2)');uploaded=st.file_uploader('อัปโหลด Excel',type=['xlsx','xls'])
+st.title('📊 KPI01 — ตารางสถิติ');st.caption('ไฟล์ข้อมูลสามารถแยกเป็น 2 Sheet: ปริญญาโท และ ปริญญาเอก | ระบบไม่นับรหัสซ้ำ | A = ในเวลา + นอกเวลา | Q1-Q2 = SCOPUS (Q1)/(Q2)')
+uploaded=st.file_uploader('อัปโหลด Excel',type=['xlsx','xls'])
 if uploaded:
     try:
-        sheets,data=read_excel(uploaded);master=hierarchy(data[data['__ระดับ']=='ปริญญาโท']);doctor=hierarchy(data[data['__ระดับ']=='ปริญญาเอก']);summary=q_summary(data);st.success('อ่านข้อมูลสำเร็จ: '+', '.join(sheets));st.subheader('ปริญญาโท');st.dataframe(master,use_container_width=True,hide_index=True);st.subheader('ปริญญาเอก');st.dataframe(doctor,use_container_width=True,hide_index=True);st.subheader('สรุป Scopus Q1-Q2');st.dataframe(summary,use_container_width=True,hide_index=True);st.download_button('📥 ดาวน์โหลด Excel KPI01',excel_bytes(master,doctor,summary),'KPI01.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        sheets,data=read_excel(uploaded);master=hierarchy(data[data['__ระดับ']=='ปริญญาโท']);doctor=hierarchy(data[data['__ระดับ']=='ปริญญาเอก']);summary=q_summary(data)
+        st.success('อ่านข้อมูลสำเร็จ: '+', '.join(sheets));st.subheader('ปริญญาโท');st.dataframe(master,use_container_width=True,hide_index=True);st.subheader('ปริญญาเอก');st.dataframe(doctor,use_container_width=True,hide_index=True);st.subheader('สรุป Scopus Q1-Q2');st.dataframe(summary,use_container_width=True,hide_index=True)
+        st.download_button('📥 ดาวน์โหลด Excel KPI01',excel_bytes(master,doctor,summary),'KPI01.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     except Exception as e:st.error(f'ไม่สามารถอ่านไฟล์ได้: {e}')
 else:st.info('อัปโหลด Excel เพื่อสร้างตารางสถิติ')
