@@ -88,15 +88,16 @@ def prepare_sheet(df,sheet_name):
     return out[out['__ระดับ'].isin(['ปริญญาโท','ปริญญาเอก'])].copy()
 
 def read_excel(uploaded):
-    uploaded.seek(0);sheets=pd.read_excel(uploaded,sheet_name=None,header=1);frames=[];used=[];errors=[]
+    uploaded.seek(0);sheets=pd.read_excel(uploaded,sheet_name=None,header=1);frames=[];used=[];raw_sheets={};errors=[]
     for name,df in sheets.items():
         if df is None or df.empty:continue
         try:
             p=prepare_sheet(df,name)
-            if not p.empty:frames.append(p);used.append(name)
+            if not p.empty:
+                frames.append(p);used.append(name);raw_sheets[name]=df.copy()
         except ValueError as e:errors.append(str(e))
     if not frames:raise ValueError('ไม่พบ Sheet ข้อมูลปริญญาโท/ปริญญาเอกที่ใช้งานได้'+(f": {'; '.join(errors[:3])}" if errors else ''))
-    return used,pd.concat(frames,ignore_index=True)
+    return used,pd.concat(frames,ignore_index=True),raw_sheets
 
 def count_system(df,kind):
     x=df[df['__ระบบ']==kind]
@@ -131,12 +132,8 @@ def hierarchy(data):
         mask=data['__กลุ่ม'].map(clean).eq(g)&data['__คณะ'].map(clean).eq(f)&data['__สาขา'].map(clean).ne('')
         actual=[];seen=set()
         for p in data.loc[mask,'__สาขา'].map(clean):
-            if p and p not in seen:
-                seen.add(p);actual.append(p)
-        ordered=[]
-        for p in preferred:
-            if p in seen:
-                ordered.append(p)
+            if p and p not in seen:seen.add(p);actual.append(p)
+        ordered=[p for p in preferred if p in seen]
         ordered.extend(p for p in actual if p not in ordered)
         return ordered
     for g,fs in ORDER_TREE:
@@ -149,9 +146,7 @@ def hierarchy(data):
         add_group(g)
         if g and f:
             add_faculty(g,f)
-            # แสดงทุกสาขาที่มีอยู่จริงในคณะ แม้ไม่ได้อยู่ใน ORDER_TREE
-            ps=programs_for_faculty(g,f,[])
-            for p in ps:add_program(g,f,p)
+            for p in programs_for_faculty(g,f,[]):add_program(g,f,p)
     rows.append(['','รวมทั้งหมด',*metrics(data)])
     return pd.DataFrame(rows,columns=cols)
 
@@ -160,12 +155,23 @@ def q_summary(data):
         x=data[data['__ระดับ']==level];q1=int((x['__Q']=='Q1').sum());q2=int((x['__Q']=='Q2').sum());return q1,q2,q1+q2
     m,d=vals('ปริญญาโท'),vals('ปริญญาเอก');return pd.DataFrame([['ระดับปริญญาโท',*m],['ระดับปริญญาเอก',*d],['รวม',m[0]+d[0],m[1]+d[1],m[2]+d[2]]],columns=['','Scopus Q1','Scopus Q2','รวม'])
 
-def excel_bytes(master,doctor,summary):
+def safe_sheet_name(name,used):
+    base='ข้อมูล_'+clean(name)[:25]
+    base=re.sub(r'[\\/*?:\[\]]','_',base) or 'ข้อมูล'
+    candidate=base[:31];i=1
+    while candidate in used:
+        suffix=f'_{i}';candidate=base[:31-len(suffix)]+suffix;i+=1
+    used.add(candidate);return candidate
+
+def excel_bytes(master,doctor,summary,raw_sheets):
     bio=io.BytesIO()
     with pd.ExcelWriter(bio,engine='openpyxl') as w:
         master.to_excel(w,sheet_name='ปริญญาโท',index=False,startrow=3,header=False)
         doctor.to_excel(w,sheet_name='ปริญญาเอก',index=False,startrow=3,header=False)
         summary.to_excel(w,sheet_name='สรุป Scopus Q1-Q2',index=False,startrow=1)
+        used_names={'ปริญญาโท','ปริญญาเอก','สรุป Scopus Q1-Q2'}
+        for source_name,source_df in raw_sheets.items():
+            source_df.to_excel(w,sheet_name=safe_sheet_name(source_name,used_names),index=False)
     wb=load_workbook(bio)
     dark='2F5D1E';light='5A8C3A';peach='FCE4D6';faculty_fill='E2F0D9';white='FFFFFF';grid='808080';thin=Side(style='thin',color=grid);border=Border(left=thin,right=thin,top=thin,bottom=thin)
     for ws,level in [(wb['ปริญญาโท'],'ปริญญาโท'),(wb['ปริญญาเอก'],'ปริญญาเอก')]:
@@ -177,10 +183,9 @@ def excel_bytes(master,doctor,summary):
             for col in range(1,8):
                 c=ws.cell(row,col);c.fill=PatternFill('solid',fgColor=dark if row<3 else light);c.font=Font(name='Tahoma',size=12,bold=True,color=white);c.alignment=Alignment(horizontal='center',vertical='center',wrap_text=True);c.border=border
         for r in range(4,ws.max_row+1):
-            raw=str(ws.cell(r,2).value or '')
-            stripped=raw.strip()
+            raw=str(ws.cell(r,2).value or '');stripped=raw.strip()
             if stripped=='รวมทั้งหมด': fill=peach
-            elif raw.startswith('        '): fill='FFFFFF'
+            elif raw.startswith('        '): fill=white
             elif raw.startswith('    '): fill=faculty_fill
             else: fill=peach
             for c in range(1,8):
@@ -205,8 +210,8 @@ st.title('📊 KPI01 — ตารางสถิติ');st.caption("กลุ�
 uploaded=st.file_uploader('อัปโหลด Excel',type=['xlsx','xls'])
 if uploaded:
     try:
-        used,data=read_excel(uploaded);master=hierarchy(data[data['__ระดับ']=='ปริญญาโท']);doctor=hierarchy(data[data['__ระดับ']=='ปริญญาเอก']);summary=q_summary(data);st.success(f'อ่าน Sheet: {", ".join(used)} | ข้อมูล: {len(data):,} แถว')
+        used,data,raw_sheets=read_excel(uploaded);master=hierarchy(data[data['__ระดับ']=='ปริญญาโท']);doctor=hierarchy(data[data['__ระดับ']=='ปริญญาเอก']);summary=q_summary(data);st.success(f'อ่าน Sheet: {", ".join(used)} | ข้อมูล: {len(data):,} แถว | ชุดข้อมูลจะถูกแนบในไฟล์ Excel ที่ดาวน์โหลด')
         st.subheader('ปริญญาโท');st.dataframe(master,use_container_width=True,hide_index=True);st.subheader('ปริญญาเอก');st.dataframe(doctor,use_container_width=True,hide_index=True);st.subheader('สรุป Scopus Q1-Q2');st.dataframe(summary,use_container_width=True,hide_index=True)
-        st.download_button('📥 ดาวน์โหลด Excel KPI01',excel_bytes(master,doctor,summary),'KPI01.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        st.download_button('📥 ดาวน์โหลด Excel KPI01',excel_bytes(master,doctor,summary,raw_sheets),'KPI01.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     except Exception as e:st.error(f'ไม่สามารถอ่านไฟล์ได้: {e}')
 else:st.info('อัปโหลด Excel เพื่อสร้างตารางสถิติ')
