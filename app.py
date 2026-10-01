@@ -8,7 +8,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 st.set_page_config(page_title='KPI01', page_icon='📊', layout='wide')
 LEVEL=['ระดับ','ระดับการศึกษา','degree']
 Q_MAIN=['ฐานข้อมูล','ฐานข้อมูล ']
-GROUP=['กลุ่ม','group']; FACULTY=['คณะ','faculty']
+GROUP=['กลุ่มสาขา','กลุ่ม','group']; FACULTY=['คณะ','faculty']
 PROGRAM_TOTAL=['สาขารวม','สาขา รวม','program total']; PROGRAM=['สาขา','สาขาวิชา','หลักสูตร','program','major']
 SYSTEM=['ระบบ']; STUDENT=['รหัสนิสิต','รหัสนักศึกษา','รหัส','student id']; STATUS=['สถานะนิสิต','สถานะนักศึกษา','สถานะ','status']
 
@@ -65,8 +65,8 @@ def prepare(df):
     if not base_col: raise ValueError("ไม่พบคอลัมน์ 'ฐานข้อมูล' ในแถวที่ 2")
     if not system_col: raise ValueError("ไม่พบคอลัมน์ 'ระบบ' ในแถวที่ 2")
 
-    # Excel ต้นฉบับมีการ Merge Cell ในคอลัมน์กลุ่ม/คณะ ทำให้แถวถัดลงมาว่าง
-    # ต้องเติมค่าจากแถวก่อนหน้า เพื่อให้แต่ละนิสิตยังอยู่ภายใต้กลุ่มและคณะที่ถูกต้อง
+    # ใช้คอลัมน์ "กลุ่มสาขา" เป็นตัวกำหนดกลุ่มโดยตรง
+    # Excel ต้นฉบับอาจ Merge Cell ทำให้แถวถัดลงมาว่าง จึงเติมค่าจากแถวก่อนหน้า
     if group_col: out[group_col]=out[group_col].map(clean).replace('',pd.NA).ffill().fillna('')
     if faculty_col: out[faculty_col]=out[faculty_col].map(clean).replace('',pd.NA).ffill().fillna('')
 
