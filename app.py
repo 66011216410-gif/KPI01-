@@ -59,7 +59,8 @@ def prepare(df):
     if not base_col:raise ValueError("ไม่พบคอลัมน์ 'ฐานข้อมูล' ในแถวที่ 2")
     if not system_col:raise ValueError("ไม่พบคอลัมน์ 'ระบบ' ในแถวที่ 2")
     if not group_col:raise ValueError("ไม่พบคอลัมน์ 'กลุ่มสาขา' ในแถวที่ 2")
-    if group_col:out[group_col]=out[group_col].map(clean).replace('',pd.NA).ffill().fillna('')
+    # เติมค่าเฉพาะคอลัมน์ที่เป็นโครงสร้างลำดับชั้นจากแถวด้านบน
+    out[group_col]=out[group_col].map(clean).replace('',pd.NA).ffill().fillna('')
     if faculty_col:out[faculty_col]=out[faculty_col].map(clean).replace('',pd.NA).ffill().fillna('')
     out['__ระดับ']=out[level_col].map(norm_level);out['__Q']=out[base_col].map(norm_q);out['__ระบบ']=out[system_col].map(norm_system)
     out['__รหัส']=out[student_col].map(clean) if student_col else ''
@@ -80,19 +81,27 @@ def metrics(df):
 
 def hierarchy(data):
     cols=['ลำดับ','กลุ่ม/คณะ/สาขา','ระบบในเวลาราชการ','ระบบนอกเวลาราชการ','จำนวนผู้สำเร็จการศึกษา (A)','รวมจำนวนผลงานตีพิมพ์ระดับนานาชาติ Q1-Q2','ร้อยละ'];rows=[];seen=set();n=1
-    levels=[('__กลุ่ม',0),('__คณะ',1),('__สาขา',2)]
+    # โครงสร้างต้องเป็น กลุ่มสาขา -> คณะ -> สาขารวม โดยใช้ค่าจากแต่ละคอลัมน์ตรง ๆ
     for _,r in data.sort_values('__ลำดับ').iterrows():
-        path=[]
-        for col,indent in levels:
-            val=clean(r[col])
-            if not val:continue
-            path.append(val);key=(col,tuple(path))
-            if key in seen:continue
-            seen.add(key);mask=pd.Series(True,index=data.index)
-            for pcol,_ in levels[:indent+1]:
-                pv=clean(r[pcol])
-                if pv:mask &= data[pcol].map(clean).eq(pv)
-            rows.append([n,'    '*indent+val,*metrics(data[mask])]);n+=1
+        group=clean(r['__กลุ่ม']); faculty=clean(r['__คณะ']); program=clean(r['__สาขา'])
+        if group:
+            gkey=('g',group)
+            if gkey not in seen:
+                seen.add(gkey)
+                mask=data['__กลุ่ม'].map(clean).eq(group)
+                rows.append([n,group,*metrics(data[mask])]);n+=1
+        if group and faculty:
+            fkey=('f',group,faculty)
+            if fkey not in seen:
+                seen.add(fkey)
+                mask=data['__กลุ่ม'].map(clean).eq(group) & data['__คณะ'].map(clean).eq(faculty)
+                rows.append([n,'    '+faculty,*metrics(data[mask])]);n+=1
+        if group and faculty and program:
+            pkey=('p',group,faculty,program)
+            if pkey not in seen:
+                seen.add(pkey)
+                mask=data['__กลุ่ม'].map(clean).eq(group) & data['__คณะ'].map(clean).eq(faculty) & data['__สาขา'].map(clean).eq(program)
+                rows.append([n,'        '+program,*metrics(data[mask])]);n+=1
     if rows:rows.append(['','รวมทั้งหมด',*metrics(data)])
     return pd.DataFrame(rows,columns=cols)
 
