@@ -190,6 +190,10 @@ def make_excel(data,raw_sheets):
             ws.row_dimensions[2].height=54
             ws.row_dimensions[3].height=54
             ws.freeze_panes='A4'
+            # ลบแถวว่างทั้งหมดในตาราง เพื่อให้ข้อมูลต่อเนื่องไม่มีช่องว่าง
+            for r in range(ws.max_row,3,-1):
+                if all(ws.cell(r,c).value in (None,'') for c in range(1,8)):
+                    ws.delete_rows(r,1)
             ws.column_dimensions['A'].width=9
             ws.column_dimensions['B'].width=48
             for col in range(3,8):ws.column_dimensions[chr(64+col)].width=22
@@ -201,7 +205,11 @@ def make_excel(data,raw_sheets):
                 else:fill='FCE4D6';indent=0
                 for c in range(1,8):ws.cell(row,c).fill=PatternFill('solid',fgColor=fill);ws.cell(row,c).border=table_border
                 ws.cell(row,2).alignment=Alignment(horizontal='left',vertical='center',indent=indent)
-        elif ws.title=='สรุป Scopus Q1-Q2':ws.freeze_panes='A2'
+        elif ws.title=='สรุป Scopus Q1-Q2':
+            ws.freeze_panes='A2'
+            for row in ws.iter_rows():
+                for cell in row:
+                    cell.border=table_border
     out=io.BytesIO();wb.save(out);out.seek(0);return out
 
 st.title(PAGE_TITLE)
