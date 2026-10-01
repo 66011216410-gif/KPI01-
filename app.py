@@ -105,7 +105,7 @@ def count_system(df,kind):
     return int(ids[ids!=''].nunique()+int((ids=='').sum()))
 
 def metrics(df):
-    a=count_system(df,'ในเวลา')+count_system(df,'นอกเวลา');pub=int(df['__Q'].isin(['Q1','Q2']).sum());return count_system(df,'ในเวลา'),count_system(df,'นอกเวลา'),a,pub,round(pub*100/a,2) if a else 0
+    inn=count_system(df,'ในเวลา');out=count_system(df,'นอกเวลา');a=inn+out;pub=int(df['__Q'].isin(['Q1','Q2']).sum());return inn,out,a,pub,round(pub*100/a,2) if a else 0
 
 ORDER_TREE=[
 ('กลุ่มมนุษยศาสตร์และสังคมศาสตร์',[('การเมืองการปกครอง',['รัฐศาสตร์']),('การท่องเที่ยวและการโรงแรม',['การจัดการการท่องเที่ยวและการโรงแรม']),('การบัญชีและการจัดการ',['การจัดการสมัยใหม่','การจัดการสมาร์ตซิตี้และนวัตกรรมดิจิทัล','การบัญชี','บริหารธุรกิจและนวัตกรรมดิจิทัล']),('ดุริยางคศิลป์',['ดุริยางคศิลป์']),('มนุษยศาสตร์และสังคมศาสตร์',['การสอนภาษาอังกฤษ','ภาษาไทย','ศาสนาและภูมิปัญญาเพื่อการพัฒนา']),('ศิลปกรรมศาสตร์และวัฒนธรรมศาสตร์',['การวิจัยและสร้างสรรค์ศิลปกรรมศาสตร์','วัฒนธรรมศาสตร์']),('ศึกษาศาสตร์',['เทคโนโลยีและสื่อสารการศึกษา','การบริหารและพัฒนาการศึกษา','วิจัยและประเมินผลการศึกษา','วิทยาศาสตร์การออกกำลังกายและการกีฬา','หลักสูตรและการสอน'])]),
@@ -151,53 +151,46 @@ def excel_bytes(master,doctor,summary):
         doctor.to_excel(w,sheet_name='ปริญญาเอก',index=False,startrow=3,header=False)
         summary.to_excel(w,sheet_name='สรุป Scopus Q1-Q2',index=False,startrow=1)
     wb=load_workbook(bio)
-    dark='2F5D1E';light='5A8C3A';peach='FCE4D6';faculty_fill='E2F0D9';white='FFFFFF';grid='808080'
-    thin=Side(style='thin',color=grid);border=Border(left=thin,right=thin,top=thin,bottom=thin)
+    dark='2F5D1E';light='5A8C3A';peach='FCE4D6';faculty_fill='E2F0D9';white='FFFFFF';grid='808080';thin=Side(style='thin',color=grid);border=Border(left=thin,right=thin,top=thin,bottom=thin)
     for ws,level in [(wb['ปริญญาโท'],'ปริญญาโท'),(wb['ปริญญาเอก'],'ปริญญาเอก')]:
         ws.merge_cells('A1:G1');ws['A1']=f'ผลงานของนักศึกษาและผู้สำเร็จการศึกษาในระดับ{level}'
-        for rng in ['A2:A3','B2:B3','C2:D2','E2:E3','F2:G2']:ws.merge_cells(rng)
+        for rng in ['A2:A3','B2:B3','C2:D2','E2:E3','F2:G2'] : ws.merge_cells(rng)
         labels={'A2':'ลำดับ','B2':'กลุ่ม/คณะ/สาขา','C2':'ระบบ','C3':'ระบบในเวลาราชการ','D3':'ระบบนอกเวลาราชการ','E2':'จำนวนผู้สำเร็จการศึกษา (A)','F2':'1.2.4 จำนวนผลงานระดับบัณฑิตศึกษาที่สามารถตีพิมพ์ในระดับนานาชาติ SCOPUS Q1-Q2','F3':'รวมจำนวนผลงานตีพิมพ์ระดับนานาชาติ Q1-Q2','G3':'ร้อยละ'}
         for cell,val in labels.items():ws[cell]=val
-        for row in ws.iter_rows(min_row=1,max_row=ws.max_row,min_col=1,max_col=7):
-            for c in row:
-                c.font=Font(name='Tahoma',size=11);c.alignment=Alignment(vertical='center',horizontal='center',wrap_text=True);c.border=border
-        for c in ws[1]:c.fill=PatternFill('solid',fgColor=dark);c.font=Font(name='Tahoma',size=14,bold=True,color=white)
-        for r in [2,3]:
-            for c in ws[r]:c.fill=PatternFill('solid',fgColor=light);c.font=Font(name='Tahoma',size=11,bold=True,color=white)
-        # หัวข้อกลุ่ม/คณะ/สาขาและข้อมูลในคอลัมน์นี้ชิดซ้าย
-        ws['B2'].alignment=Alignment(vertical='center',horizontal='left',wrap_text=True)
+        for row in range(1,4):
+            for col in range(1,8):
+                c=ws.cell(row,col);c.fill=PatternFill('solid',fgColor=dark if row<3 else light);c.font=Font(name='Tahoma',size=12,bold=True,color=white);c.alignment=Alignment(horizontal='center',vertical='center',wrap_text=True);c.border=border
         for r in range(4,ws.max_row+1):
-            cell=ws.cell(r,2);text=clean(cell.value)
-            cell.alignment=Alignment(vertical='center',horizontal='left',wrap_text=True)
-            if text=='รวมทั้งหมด':
-                fill=peach;bold=True
-            elif text.startswith('        '):
-                fill='FFFFFF';bold=False
-            elif text.startswith('    '):
-                fill=faculty_fill;bold=False
-            else:
-                fill=peach;bold=True
-            for c in ws[r]:
-                c.fill=PatternFill('solid',fgColor=fill)
-                c.font=Font(name='Tahoma',size=11,bold=bold)
-                c.border=border
-            for col in range(3,8):ws.cell(r,col).alignment=Alignment(vertical='center',horizontal='right')
-        for col,width in {'A':9,'B':55,'C':22,'D':22,'E':22,'F':28,'G':18}.items():ws.column_dimensions[col].width=width
-        ws.row_dimensions[1].height=30;ws.row_dimensions[2].height=45;ws.row_dimensions[3].height=55;ws.freeze_panes='A4';ws.sheet_view.showGridLines=False
-    ws=wb['สรุป Scopus Q1-Q2'];ws['A1']='1.2.4) จำนวนผลงานระดับบัณฑิตศึกษาที่ตีพิมพ์ในระดับนานาชาติ Scopus Q1, Q2'
-    for c in ws[2]:c.fill=PatternFill('solid',fgColor=dark);c.font=Font(name='Tahoma',size=12,bold=True,color=white);c.alignment=Alignment(horizontal='center');c.border=border
-    for row in ws.iter_rows(min_row=3,max_row=5,min_col=1,max_col=4):
-        for c in row:c.font=Font(name='Tahoma',size=12);c.alignment=Alignment(horizontal='center' if c.column>1 else 'left');c.border=border
-    for col,width in {'A':28,'B':18,'C':18,'D':18}.items():ws.column_dimensions[col].width=width
-    ws.sheet_view.showGridLines=False
+            raw=str(ws.cell(r,2).value or '')
+            stripped=raw.strip()
+            if stripped=='รวมทั้งหมด': fill=peach
+            elif raw.startswith('        '): fill='FFFFFF'
+            elif raw.startswith('    '): fill=faculty_fill
+            else: fill=peach
+            for c in range(1,8):
+                cell=ws.cell(r,c);cell.fill=PatternFill('solid',fgColor=fill);cell.border=border;cell.font=Font(name='Tahoma',size=12,bold=(fill in [peach,faculty_fill]));cell.alignment=Alignment(vertical='center',wrap_text=True)
+            ws.cell(r,2).alignment=Alignment(horizontal='left',vertical='center',wrap_text=True)
+            for c in range(3,8):ws.cell(r,c).alignment=Alignment(horizontal='right',vertical='center')
+            ws.cell(r,7).number_format='0.00'
+        ws['A1'].fill=PatternFill('solid',fgColor=dark);ws['A1'].font=Font(name='Tahoma',size=16,bold=True,color=white);ws['A1'].alignment=Alignment(horizontal='center',vertical='center');ws.row_dimensions[1].height=30
+        for r in [2,3]:ws.row_dimensions[r].height=42
+        for r in range(4,ws.max_row+1):ws.row_dimensions[r].height=24
+        for col,width in {'A':9,'B':52,'C':18,'D':20,'E':20,'F':30,'G':16}.items():ws.column_dimensions[col].width=width
+        ws.freeze_panes='A4';ws.sheet_view.showGridLines=False
+    ws=wb['สรุป Scopus Q1-Q2'];
+    for row in ws.iter_rows():
+        for c in row:c.border=border;c.alignment=Alignment(horizontal='center',vertical='center');c.font=Font(name='Tahoma',size=12)
+    for c in ws[2]:c.fill=PatternFill('solid',fgColor=peach);c.font=Font(name='Tahoma',size=12,bold=True)
+    for c in ws[4]:c.fill=PatternFill('solid',fgColor=peach);c.font=Font(name='Tahoma',size=12,bold=True)
+    ws.column_dimensions['A'].width=28;ws.column_dimensions['B'].width=16;ws.column_dimensions['C'].width=16;ws.column_dimensions['D'].width=14
     out=io.BytesIO();wb.save(out);out.seek(0);return out
 
-st.title('📊 KPI01 — ตารางสถิติ');st.caption('ไฟล์ข้อมูลสามารถแยกเป็น 2 Sheet: ปริญญาโท และ ปริญญาเอก | ระบบไม่นับรหัสซ้ำ | A = ในเวลา + นอกเวลา | Q1-Q2 = SCOPUS (Q1)/(Q2)')
+st.title('📊 KPI01 — ตารางสถิติ');st.caption("กลุ่มยึดจาก 'กลุ่มสาขา' | คณะ 1 คณะอยู่ 1 กลุ่ม | สาขา 1 สาขาอยู่ 1 กลุ่ม | ระบบไม่นับรหัสซ้ำ | A = ในเวลา + นอกเวลา | Q1-Q2 = SCOPUS (Q1)/(Q2)")
 uploaded=st.file_uploader('อัปโหลด Excel',type=['xlsx','xls'])
 if uploaded:
     try:
-        sheets,data=read_excel(uploaded);master=hierarchy(data[data['__ระดับ']=='ปริญญาโท']);doctor=hierarchy(data[data['__ระดับ']=='ปริญญาเอก']);summary=q_summary(data)
-        st.success('อ่านข้อมูลสำเร็จ: '+', '.join(sheets));st.subheader('ปริญญาโท');st.dataframe(master,use_container_width=True,hide_index=True);st.subheader('ปริญญาเอก');st.dataframe(doctor,use_container_width=True,hide_index=True);st.subheader('สรุป Scopus Q1-Q2');st.dataframe(summary,use_container_width=True,hide_index=True)
+        used,data=read_excel(uploaded);master=hierarchy(data[data['__ระดับ']=='ปริญญาโท']);doctor=hierarchy(data[data['__ระดับ']=='ปริญญาเอก']);summary=q_summary(data);st.success(f'อ่าน Sheet: {", ".join(used)} | ข้อมูล: {len(data):,} แถว')
+        st.subheader('ปริญญาโท');st.dataframe(master,use_container_width=True,hide_index=True);st.subheader('ปริญญาเอก');st.dataframe(doctor,use_container_width=True,hide_index=True);st.subheader('สรุป Scopus Q1-Q2');st.dataframe(summary,use_container_width=True,hide_index=True)
         st.download_button('📥 ดาวน์โหลด Excel KPI01',excel_bytes(master,doctor,summary),'KPI01.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     except Exception as e:st.error(f'ไม่สามารถอ่านไฟล์ได้: {e}')
 else:st.info('อัปโหลด Excel เพื่อสร้างตารางสถิติ')
