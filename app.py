@@ -7,7 +7,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 st.set_page_config(page_title='KPI01',page_icon='📊',layout='wide')
 LEVEL=['ระดับ','ระดับการศึกษา','degree']; Q_MAIN=['ฐานข้อมูล','ฐานข้อมูล ']
-GROUP=['กลุ่มสาขา','กลุ่ม','group']; FACULTY=['คณะ','faculty']; PROGRAM_TOTAL=['สาขารวม','สาขา รวม','program total']; PROGRAM=['สาขา','สาขาวิชา','หลักสูตร','program','major']
+GROUP=['กลุ่มสาขา']; FACULTY=['คณะ','faculty']; PROGRAM_TOTAL=['สาขารวม','สาขา รวม','program total']; PROGRAM=['สาขา','สาขาวิชา','หลักสูตร','program','major']
 SYSTEM=['ระบบ']; STUDENT=['รหัสนิสิต','รหัสนักศึกษา','รหัส','student id']
 
 def clean(v): return '' if pd.isna(v) else str(v).strip()
@@ -58,11 +58,12 @@ def prepare(df):
     if not level_col:raise ValueError("ไม่พบคอลัมน์ 'ระดับ' ในแถวที่ 2")
     if not base_col:raise ValueError("ไม่พบคอลัมน์ 'ฐานข้อมูล' ในแถวที่ 2")
     if not system_col:raise ValueError("ไม่พบคอลัมน์ 'ระบบ' ในแถวที่ 2")
+    if not group_col:raise ValueError("ไม่พบคอลัมน์ 'กลุ่มสาขา' ในแถวที่ 2")
     if group_col:out[group_col]=out[group_col].map(clean).replace('',pd.NA).ffill().fillna('')
     if faculty_col:out[faculty_col]=out[faculty_col].map(clean).replace('',pd.NA).ffill().fillna('')
     out['__ระดับ']=out[level_col].map(norm_level);out['__Q']=out[base_col].map(norm_q);out['__ระบบ']=out[system_col].map(norm_system)
     out['__รหัส']=out[student_col].map(clean) if student_col else ''
-    out['__กลุ่ม']=out[group_col].map(clean) if group_col else '';out['__คณะ']=out[faculty_col].map(clean) if faculty_col else ''
+    out['__กลุ่ม']=out[group_col].map(clean);out['__คณะ']=out[faculty_col].map(clean) if faculty_col else ''
     out['__สาขา']=out[program_total_col].map(clean) if program_total_col else (out[program_col].map(clean) if program_col else '')
     out['__ลำดับ']=range(len(out));out=out[out['__ระดับ'].isin(['ปริญญาโท','ปริญญาเอก'])].copy();return out
 
@@ -70,7 +71,6 @@ def count_system(df,kind):
     x=df[df['__ระบบ']==kind]
     if x.empty:return 0
     ids=x['__รหัส'].map(clean)
-    # ถ้ามีรหัสนิสิต ให้ตัดรหัสซ้ำ เหลือ 1 คนต่อระบบ; แถวที่ไม่มีรหัสนับตามแถว
     nonblank=ids[ids!=''].nunique(); blank=int((ids=='').sum())
     return int(nonblank+blank)
 
@@ -123,7 +123,7 @@ def excel_bytes(master,doctor):
         ws.freeze_panes='A7';ws.sheet_view.showGridLines=False
     out=io.BytesIO();wb.save(out);out.seek(0);return out
 
-st.title('📊 KPI01 — ตารางสถิติ');st.caption("หัวคอลัมน์อยู่แถวที่ 2 | ระดับจาก 'ระดับ' | Q1-Q2 นับจาก 'ฐานข้อมูล' เฉพาะ SCOPUS (Q1)/(Q2) | ระบบนับผู้เรียนแบบไม่ซ้ำรหัสนิสิต | A = ในเวลา + นอกเวลา")
+st.title('📊 KPI01 — ตารางสถิติ');st.caption("หัวคอลัมน์อยู่แถวที่ 2 | ระดับจาก 'ระดับ' | Q1-Q2 นับจาก 'ฐานข้อมูล' เฉพาะ SCOPUS (Q1)/(Q2) | ระบบนับผู้เรียนแบบไม่ซ้ำรหัสนิสิต | A = ในเวลา + นอกเวลา | กลุ่มใช้คอลัมน์ 'กลุ่มสาขา'")
 uploaded=st.file_uploader('อัปโหลด Excel',type=['xlsx','xls'])
 if uploaded:
     try:
