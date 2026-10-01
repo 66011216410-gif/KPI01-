@@ -2,9 +2,6 @@ import io
 import re
 import pandas as pd
 import streamlit as st
-from openpyxl import load_workbook
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
 
 st.set_page_config(page_title="KPI01", page_icon="📊", layout="wide")
 LEVEL=["ระดับ","ระดับการศึกษา","degree"]; Q_MAIN=["ผลงานที่ตีพิมพ์ Q1-Q2","ผลงานที่ตีพิมพ์Q1-Q2"]; Q_FALLBACK=["ฐานข้อมูล"]
@@ -73,7 +70,14 @@ def unique_students(df):
     ids=df["__รหัส"].astype(str).str.strip()
     return int(ids[ids!=""].nunique()) if ids.ne("").any() else len(df)
 def metrics(df):
-    x=df[df["__สถานะ"]];inn=unique_students(x[x["__ระบบ"]=="ในเวลา"]);outn=unique_students(x[x["__ระบบ"]=="นอกเวลา"]);a=inn+outn;pub=int(x["__Q"].isin(["Q1","Q2"]).sum());pct=round(pub*100/a,2) if a else 0;return inn,outn,a,pub,pct
+    # ระบบใน/นอก ให้นับเป็น "จำนวนแถว" จากคอลัมน์ ระบบ โดยตรง
+    inn=int((df["__ระบบ"]=="ในเวลา").sum())
+    outn=int((df["__ระบบ"]=="นอกเวลา").sum())
+    x=df[df["__สถานะ"]]
+    a=unique_students(x)
+    pub=int(x["__Q"].isin(["Q1","Q2"]).sum())
+    pct=round(pub*100/a,2) if a else 0
+    return inn,outn,a,pub,pct
 
 def hierarchy(data):
     cols=["ลำดับ","กลุ่ม/คณะ/สาขา","ระบบในเวลาราชการ","ระบบนอกเวลาราชการ","จำนวนผู้สำเร็จการศึกษา (A)","รวมจำนวนผลงานตีพิมพ์ระดับนานาชาติ Q1-Q2","ร้อยละ"];rows=[];seen=set();n=1
@@ -88,54 +92,19 @@ def hierarchy(data):
             seen.add(key);mask=pd.Series(True,index=data.index)
             for pcol,_ in levels[:indent+1]:
                 pv=clean(r[pcol])
-                if pv:mask &= data[pcol].map(clean).eq(pv)
+                if pv: mask &= data[pcol].map(clean).eq(pv)
             rows.append([n,"    "*indent+val,*metrics(data[mask])]);n+=1
     if rows:rows.append(["","รวมทั้งหมด",*metrics(data)])
     return pd.DataFrame(rows,columns=cols)
 
-def format_sheet(ws, df):
-    # ตารางรูปแบบเดียวกับตัวอย่าง: หัวตาราง 2 ชั้น ไม่มีแถวว่างก่อนข้อมูล
-    ws.delete_rows(1, ws.max_row)
-    headers=["ลำดับ","กลุ่ม/คณะ/สาขา","ระบบ","","จำนวนผู้สำเร็จการศึกษา (A)","1.2.4 จำนวนผลงานระดับบัณฑิตศึกษาที่สามารถตีพิมพ์ในระดับนานาชาติ SOPUS Q1-Q2",""]
-    subheaders=["","","ระบบในเวลาราชการ","ระบบนอกเวลาราชการ","","รวมจำนวนผลงานตีพิมพ์ระดับนานาชาติ Q1-Q2","ร้อยละผลงานวิจัยรวมระดับนานาชาติ Q1-Q2"]
-    for c,v in enumerate(headers,1): ws.cell(1,c,v)
-    for c,v in enumerate(subheaders,1): ws.cell(2,c,v)
-    ws.merge_cells("A1:A2"); ws.merge_cells("B1:B2"); ws.merge_cells("C1:D1"); ws.merge_cells("E1:E2"); ws.merge_cells("F1:G1")
-    for row_idx,row in enumerate(df.itertuples(index=False),3):
-        for col_idx,val in enumerate(row,1):
-            ws.cell(row_idx,col_idx,val)
-    fill=PatternFill("solid",fgColor="355E20")
-    white=Font(color="FFFFFF",bold=True,size=12)
-    thin=Side(style="thin",color="000000")
-    border=Border(left=thin,right=thin,top=thin,bottom=thin)
-    for row in ws.iter_rows(min_row=1,max_row=2,min_col=1,max_col=7):
-        for cell in row:
-            cell.fill=fill;cell.font=white;cell.alignment=Alignment(horizontal="center",vertical="center",wrap_text=True);cell.border=border
-    for row in ws.iter_rows(min_row=3,max_row=ws.max_row,min_col=1,max_col=7):
-        for cell in row:
-            cell.border=border;cell.alignment=Alignment(vertical="center",horizontal="center")
-        row[1].alignment=Alignment(vertical="center",horizontal="left",indent=0 if not str(row[1].value).startswith("    ") else 1)
-        if isinstance(row[6].value,(int,float)): row[6].number_format="0.00"
-    ws.row_dimensions[1].height=34;ws.row_dimensions[2].height=42
-    widths=[9,42,20,20,23,39,39]
-    for i,w in enumerate(widths,1): ws.column_dimensions[get_column_letter(i)].width=w
-    ws.freeze_panes="A3"
-    ws.auto_filter.ref=f"A2:G{ws.max_row}"
-    ws.sheet_view.showGridLines=False
-
 def excel_bytes(master,doctor):
     bio=io.BytesIO()
     with pd.ExcelWriter(bio,engine="openpyxl") as w:
-        master.to_excel(w,sheet_name="ปริญญาโท",index=False,startrow=2,header=False)
-        doctor.to_excel(w,sheet_name="ปริญญาเอก",index=False,startrow=2,header=False)
-    bio.seek(0)
-    wb=load_workbook(bio)
-    format_sheet(wb["ปริญญาโท"],master)
-    format_sheet(wb["ปริญญาเอก"],doctor)
-    out=io.BytesIO();wb.save(out);out.seek(0);return out
+        master.to_excel(w,sheet_name="ปริญญาโท",index=False,startrow=3);doctor.to_excel(w,sheet_name="ปริญญาเอก",index=False,startrow=3)
+    bio.seek(0);return bio
 
 st.title("📊 KPI01 — ตารางสถิติ")
-st.caption("หัวคอลัมน์อยู่แถวที่ 2 | ระดับจาก 'ระดับ' | Q1/Q2 จาก 'ผลงานที่ตีพิมพ์ Q1-Q2' หรือ 'ฐานข้อมูล' | ระบบจาก 'ระบบ'")
+st.caption("หัวคอลัมน์อยู่แถวที่ 2 | ระดับจาก 'ระดับ' | Q1/Q2 จาก 'ผลงานที่ตีพิมพ์ Q1-Q2' หรือ 'ฐานข้อมูล' | ระบบนับจำนวนแถวจาก 'ระบบ'")
 uploaded=st.file_uploader("อัปโหลด Excel",type=["xlsx","xls"])
 if uploaded:
     try:
