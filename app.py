@@ -29,11 +29,7 @@ def norm_q(v):
     if "Q2" in s:return "Q2"
     return "อื่น ๆ"
 def norm_system(v):
-    # รองรับค่าจริงในคอลัมน์ ระบบ เช่น
-    # ระบบในเวลาราชการ / ในเวลาราชการ / ระบบในเวลา / ในเวลา
-    # ระบบนอกเวลาราชการ / นอกเวลาราชการ / ระบบนอกเวลา / นอกเวลา
-    s=clean(v).lower()
-    s=re.sub(r"\s+","",s)
+    s=clean(v).lower();s=re.sub(r"\s+","",s)
     s=s.replace("ระบบ","",1) if s.startswith("ระบบ") else s
     if not s:return ""
     if any(x in s for x in ["นอกเวลาราชการ","นอกเวลา","นอกเวล","parttime","part-time"]):return "นอกเวลา"
@@ -75,11 +71,12 @@ def unique_students(df):
     ids=df["__รหัส"].astype(str).str.strip()
     return int(ids[ids!=""].nunique()) if ids.ne("").any() else len(df)
 def metrics(df):
-    # ระบบใน/นอก = จำนวนแถวในคอลัมน์ ระบบ โดยตรง ไม่ตัดตามสถานะและไม่นับรหัสนิสิตแบบไม่ซ้ำ
+    # ระบบใน/นอก = จำนวนแถวจากคอลัมน์ ระบบโดยตรง
     inn=int((df["__ระบบ"]=="ในเวลา").sum())
     outn=int((df["__ระบบ"]=="นอกเวลา").sum())
+    # จำนวนผู้สำเร็จการศึกษา (A) = ระบบในเวลา + ระบบนอกเวลา
+    a=inn+outn
     x=df[df["__สถานะ"]]
-    a=unique_students(x)
     pub=int(x["__Q"].isin(["Q1","Q2"]).sum())
     pct=round(pub*100/a,2) if a else 0
     return inn,outn,a,pub,pct
@@ -109,7 +106,7 @@ def excel_bytes(master,doctor):
     bio.seek(0);return bio
 
 st.title("📊 KPI01 — ตารางสถิติ")
-st.caption("หัวคอลัมน์อยู่แถวที่ 2 | ระดับจาก 'ระดับ' | Q1/Q2 จาก 'ผลงานที่ตีพิมพ์ Q1-Q2' หรือ 'ฐานข้อมูล' | ระบบนับจำนวนแถวจาก 'ระบบ'")
+st.caption("หัวคอลัมน์อยู่แถวที่ 2 | ระดับจาก 'ระดับ' | Q1/Q2 จาก 'ผลงานที่ตีพิมพ์ Q1-Q2' หรือ 'ฐานข้อมูล' | ระบบนับจำนวนแถวจาก 'ระบบ' | A = ในเวลา + นอกเวลา")
 uploaded=st.file_uploader("อัปโหลด Excel",type=["xlsx","xls"])
 if uploaded:
     try:
