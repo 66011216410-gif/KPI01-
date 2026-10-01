@@ -5,7 +5,7 @@ import streamlit as st
 from openpyxl import load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
-st.set_page_config(page_title='KPI01',page_icon='📊',layout='wide')
+st.set_page_config(page_title='KPI01', page_icon='📊', layout='wide')
 LEVEL=['ระดับ','ระดับการศึกษา','degree']; Q_MAIN=['ฐานข้อมูล','ฐานข้อมูล ']; GROUP=['กลุ่มสาขา']; FACULTY=['คณะ','faculty']; PROGRAM_TOTAL=['สาขารวม','สาขา รวม','program total']; PROGRAM=['สาขา','สาขาวิชา','หลักสูตร','program','major']; SYSTEM=['ระบบ']; STUDENT=['รหัสนิสิต','รหัสนักศึกษา','รหัส','student id']
 
 def clean(v): return '' if pd.isna(v) else str(v).strip()
@@ -54,10 +54,10 @@ def prepare(df):
     if not system_col:raise ValueError("ไม่พบคอลัมน์ 'ระบบ' ในแถวที่ 2")
     if not group_col:raise ValueError("ไม่พบคอลัมน์ 'กลุ่มสาขา' ในแถวที่ 2")
 
-    # อ่านกลุ่มจากกลุ่มสาขาเท่านั้น และรองรับ Merge Cell
+    # กลุ่มหลักอ่านจากคอลัมน์กลุ่มสาขาเท่านั้น และรองรับ Merge Cell
     raw_group=out[group_col].map(clean).replace('',pd.NA).ffill().fillna('')
 
-    # อ่านคณะและสาขา โดยเติมเฉพาะภายในกลุ่ม/คณะเดียวกัน
+    # คณะ: เติมค่าเฉพาะภายในกลุ่มเดียวกัน ห้ามลากข้ามกลุ่ม
     if faculty_col:
         fv=out[faculty_col].map(clean).replace('',pd.NA); vals=[]; cg=None; cf=''
         for g,f in zip(raw_group,fv):
@@ -68,6 +68,7 @@ def prepare(df):
         raw_faculty=pd.Series(vals,index=out.index)
     else: raw_faculty=pd.Series('',index=out.index)
 
+    # สาขา: เติมค่าเฉพาะภายในกลุ่ม+คณะเดียวกัน ห้ามลากข้ามคณะ
     ps=out[program_total_col] if program_total_col else (out[program_col] if program_col else None)
     if ps is not None:
         pv=ps.map(clean).replace('',pd.NA); vals=[]; cg=None; cf=None; cp=''
@@ -79,8 +80,8 @@ def prepare(df):
         raw_program=pd.Series(vals,index=out.index)
     else: raw_program=pd.Series('',index=out.index)
 
-    # กติกาสำคัญ: คณะหนึ่งอยู่ได้เพียงกลุ่มเดียว และสาขาหนึ่งอยู่ได้เพียงกลุ่มเดียว
-    # ใช้ค่ากลุ่มสาขาจากแถวที่พบครั้งแรกเป็นค่าหลัก แล้วบังคับทุกแถวของคณะ/สาขานั้นให้อยู่กลุ่มเดียวกัน
+    # คณะ 1 คณะอยู่ได้ 1 กลุ่ม และสาขา 1 สาขาอยู่ได้ 1 กลุ่ม
+    # ใช้กลุ่มที่พบครั้งแรกจากคอลัมน์กลุ่มสาขาเป็นกลุ่มหลัก โดยไม่เดาจากชื่อคณะ/สาขา
     faculty_group={}; program_group={}
     for g,f,p in zip(raw_group,raw_faculty,raw_program):
         g=clean(g);f=clean(f);p=clean(p)
@@ -91,8 +92,9 @@ def prepare(df):
     for g,f,p in zip(raw_group,raw_faculty,raw_program):
         g=clean(g);f=clean(f);p=clean(p)
         if f and f in faculty_group: g=faculty_group[f]
-        if p and p in program_group: g=program_group[p]
+        elif p and p in program_group: g=program_group[p]
         canonical_group.append(g)
+
     out['__กลุ่ม']=canonical_group
     out['__คณะ']=raw_faculty.map(clean)
     out['__สาขา']=raw_program.map(clean)
@@ -107,16 +109,72 @@ def count_system(df,kind):
 def metrics(df):
     inn=count_system(df,'ในเวลา');outn=count_system(df,'นอกเวลา');a=inn+outn;pub=int(df['__Q'].isin(['Q1','Q2']).sum());return inn,outn,a,pub,round(pub*100/a,2) if a else 0
 
+# ลำดับที่ผู้ใช้กำหนด: กลุ่ม -> คณะ -> สาขา
+ORDER_TREE=[
+ ('กลุ่มมนุษยศาสตร์และสังคมศาสตร์',[
+  ('การเมืองการปกครอง',['รัฐศาสตร์']),
+  ('การท่องเที่ยวและการโรงแรม',['การจัดการการท่องเที่ยวและการโรงแรม']),
+  ('การบัญชีและการจัดการ',['การจัดการสมัยใหม่','การจัดการสมาร์ตซิตี้และนวัตกรรมดิจิทัล','การบัญชี','บริหารธุรกิจและนวัตกรรมดิจิทัล']),
+  ('ดุริยางคศิลป์',['ดุริยางคศิลป์']),
+  ('มนุษยศาสตร์และสังคมศาสตร์',['การสอนภาษาอังกฤษ','ภาษาไทย','ศาสนาและภูมิปัญญาเพื่อการพัฒนา']),
+  ('ศิลปกรรมศาสตร์และวัฒนธรรมศาสตร์',['การวิจัยและสร้างสรรค์ศิลปกรรมศาสตร์','วัฒนธรรมศาสตร์']),
+  ('ศึกษาศาสตร์',['เทคโนโลยีและสื่อสารการศึกษา','การบริหารและพัฒนาการศึกษา','วิจัยและประเมินผลการศึกษา','วิทยาศาสตร์การออกกำลังกายและการกีฬา','หลักสูตรและการสอน'])
+ ]),
+ ('กลุ่มวิทยาศาสตร์และเทคโนโลยี',[
+  ('เทคโนโลยี',['เกษตรศาสตร์','เทคโนโลยีการอาหาร']),
+  ('วิจัยวลัยรุกขเวช',['ความหลากหลายทางชีวภาพ']),
+  ('วิทยาการสารสนเทศ',['เทคโนโลยีสารสนเทศ','วิทยาการคอมพิวเตอร์','สื่อนฤมิต']),
+  ('วิทยาศาสตร์',['บรรพชีวินวิทยา','ฟิสิกส์']),
+  ('วิศวกรรมศาสตร์',['วิศวกรรมเครื่องกล','วิศวกรรมโยธา','วิศวกรรมไฟฟ้าและคอมพิวเตอร์']),
+  ('สิ่งแวดล้อมและทรัพยากรศาสตร์',['การจัดการสิ่งแวดล้อมอย่างยั่งยืน'])
+ ]),
+ ('กลุ่มวิทยาศาสตร์สุขภาพ',[
+  ('เภสัชศาสตร์',['เภสัชศาสตร์']),
+  ('แพทยศาสตร์',['วิทยาศาสตร์สุขภาพ']),
+  ('สาธารณสุขศาสตร์',['เทคโนโลยีทางสุขภาพและความปลอดภัย','สาธารณสุขศาสตรดุษฎีบัณฑิต'])
+ ])
+]
+
 def hierarchy(data):
-    cols=['ลำดับ','กลุ่ม/คณะ/สาขา','ระบบในเวลาราชการ','ระบบนอกเวลาราชการ','จำนวนผู้สำเร็จการศึกษา (A)','รวมจำนวนผลงานตีพิมพ์ระดับนานาชาติ Q1-Q2','ร้อยละ'];rows=[];seen=set();n=1
+    cols=['ลำดับ','กลุ่ม/คณะ/สาขา','ระบบในเวลาราชการ','ระบบนอกเวลาราชการ','จำนวนผู้สำเร็จการศึกษา (A)','รวมจำนวนผลงานตีพิมพ์ระดับนานาชาติ Q1-Q2','ร้อยละ'];rows=[];seen_g=set();seen_f=set();seen_p=set();n=1
+
+    def add_group(g):
+        nonlocal n
+        if not g or g in seen_g:return
+        m=data['__กลุ่ม'].map(clean).eq(g)
+        if not m.any():return
+        seen_g.add(g);rows.append([n,g,*metrics(data[m])]);n+=1
+
+    def add_faculty(g,f):
+        nonlocal n
+        key=(g,f)
+        if not f or key in seen_f:return
+        m=data['__กลุ่ม'].map(clean).eq(g)&data['__คณะ'].map(clean).eq(f)
+        if not m.any():return
+        seen_f.add(key);rows.append([n,'    '+f,*metrics(data[m])]);n+=1
+
+    def add_program(g,f,p):
+        nonlocal n
+        key=(g,f,p)
+        if not p or key in seen_p:return
+        m=data['__กลุ่ม'].map(clean).eq(g)&data['__คณะ'].map(clean).eq(f)&data['__สาขา'].map(clean).eq(p)
+        if not m.any():return
+        seen_p.add(key);rows.append([n,'        '+p,*metrics(data[m])]);n+=1
+
+    # ใช้ลำดับที่กำหนดข้างต้นก่อน โดยสมาชิกต้องมีอยู่จริงในข้อมูลและกลุ่มต้องตรงกับกลุ่มสาขา
+    for g,faculties in ORDER_TREE:
+        add_group(g)
+        for f,programs in faculties:
+            add_faculty(g,f)
+            for p in programs:add_program(g,f,p)
+
+    # รายการอื่นที่มีอยู่จริงในไฟล์แต่ไม่ได้อยู่ในรายการกำหนด จะต่อท้ายตามลำดับข้อมูลเดิม
     for _,r in data.sort_values('__ลำดับ').iterrows():
-        group=clean(r['__กลุ่ม']);faculty=clean(r['__คณะ']);program=clean(r['__สาขา'])
-        if group and ('g',group) not in seen:
-            seen.add(('g',group));m=data['__กลุ่ม'].map(clean).eq(group);rows.append([n,group,*metrics(data[m])]);n+=1
-        if group and faculty and ('f',group,faculty) not in seen:
-            seen.add(('f',group,faculty));m=data['__กลุ่ม'].map(clean).eq(group)&data['__คณะ'].map(clean).eq(faculty);rows.append([n,'    '+faculty,*metrics(data[m])]);n+=1
-        if group and faculty and program and ('p',group,faculty,program) not in seen:
-            seen.add(('p',group,faculty,program));m=data['__กลุ่ม'].map(clean).eq(group)&data['__คณะ'].map(clean).eq(faculty)&data['__สาขา'].map(clean).eq(program);rows.append([n,'        '+program,*metrics(data[m])]);n+=1
+        g=clean(r['__กลุ่ม']);f=clean(r['__คณะ']);p=clean(r['__สาขา'])
+        if g not in seen_g:add_group(g)
+        if g and f and (g,f) not in seen_f:add_faculty(g,f)
+        if g and f and p and (g,f,p) not in seen_p:add_program(g,f,p)
+
     if rows:rows.append(['','รวมทั้งหมด',*metrics(data)])
     return pd.DataFrame(rows,columns=cols)
 
@@ -146,10 +204,12 @@ def excel_bytes(master,doctor):
         ws.freeze_panes='A7';ws.sheet_view.showGridLines=False
     out=io.BytesIO();wb.save(out);out.seek(0);return out
 
-st.title('📊 KPI01 — ตารางสถิติ');st.caption("กลุ่มยึดจาก 'กลุ่มสาขา' | คณะ 1 คณะอยู่ 1 กลุ่ม | สาขา 1 สาขาอยู่ 1 กลุ่ม | ระบบไม่นับรหัสนิสิตซ้ำ | A = ในเวลา + นอกเวลา | Q1-Q2 จาก SCOPUS (Q1)/(Q2) ในฐานข้อมูล")
+st.title('📊 KPI01 — ตารางสถิติ');st.caption("กลุ่มยึดจาก 'กลุ่มสาขา' | คณะ 1 คณะอยู่ 1 กลุ่ม | สาขา 1 สาขาอยู่ 1 กลุ่ม | ระบบไม่นับรหัสซ้ำ | A = ในเวลา + นอกเวลา | Q1-Q2 = SCOPUS (Q1)/(Q2)")
 uploaded=st.file_uploader('อัปโหลด Excel',type=['xlsx','xls'])
 if uploaded:
     try:
-        sheet,raw=read_excel(uploaded);data=prepare(raw);master=hierarchy(data[data['__ระดับ']=='ปริญญาโท']);doctor=hierarchy(data[data['__ระดับ']=='ปริญญาเอก']);st.success(f'อ่าน Sheet: {sheet} | ข้อมูล: {len(data):,} แถว');st.subheader('ปริญญาโท');st.dataframe(master,use_container_width=True,hide_index=True);st.subheader('ปริญญาเอก');st.dataframe(doctor,use_container_width=True,hide_index=True);st.download_button('📥 ดาวน์โหลด Excel KPI01',excel_bytes(master,doctor),'KPI01.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        sheet,raw=read_excel(uploaded);data=prepare(raw);master=hierarchy(data[data['__ระดับ']=='ปริญญาโท']);doctor=hierarchy(data[data['__ระดับ']=='ปริญญาเอก']);st.success(f'อ่าน Sheet: {sheet} | ข้อมูล: {len(data):,} แถว')
+        st.subheader('ปริญญาโท');st.dataframe(master,use_container_width=True,hide_index=True);st.subheader('ปริญญาเอก');st.dataframe(doctor,use_container_width=True,hide_index=True)
+        st.download_button('📥 ดาวน์โหลด Excel KPI01',excel_bytes(master,doctor),'KPI01.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     except Exception as e:st.error(f'ไม่สามารถอ่านไฟล์ได้: {e}')
 else:st.info('อัปโหลด Excel เพื่อสร้างตารางสถิติ')
