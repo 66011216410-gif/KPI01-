@@ -149,10 +149,17 @@ def make_excel(data,raw_sheets):
     bio.seek(0);wb=load_workbook(bio);thin=Side(style='thin',color='000000')
     for ws in wb.worksheets:
         if ws.title in ['ปริญญาโท','ปริญญาเอก']:
-            ws.insert_rows(1,3);ws.merge_cells('A1:G1');ws['A1']=PAGE_TITLE+' ระดับ'+ws.title;ws['A1'].font=Font(bold=True,color='FFFFFF',size=16);ws['A1'].fill=PatternFill('solid',fgColor='2F5D20');ws['A1'].alignment=Alignment(horizontal='center',vertical='center');ws.row_dimensions[1].height=28
-            headers=['ลำดับ','กลุ่ม/คณะ/สาขา','ระบบในเวลาราชการ','ระบบนอกเวลาราชการ','จำนวนผู้สำเร็จการศึกษา (A)','รวมจำนวนผลงานตีพิมพ์ระดับนานาชาติ Q1-Q2','ร้อยละ']
-            for c,h in enumerate(headers,1):ws.cell(2,c,h);ws.cell(2,c).font=Font(bold=True,color='FFFFFF');ws.cell(2,c).fill=PatternFill('solid',fgColor='2F5D20');ws.cell(2,c).alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
-            for c in range(1,8):ws.cell(3,c,'');ws.cell(3,c).fill=PatternFill('solid',fgColor='568B3B')
+            ws.insert_rows(1,3)
+            ws.merge_cells('A1:G1');ws['A1']=PAGE_TITLE+' ระดับ'+ws.title;ws['A1'].font=Font(bold=True,color='FFFFFF',size=16);ws['A1'].fill=PatternFill('solid',fgColor='2F5D20');ws['A1'].alignment=Alignment(horizontal='center',vertical='center');ws.row_dimensions[1].height=28
+            ws.merge_cells('A2:A3');ws.merge_cells('B2:B3');ws.merge_cells('C2:D2');ws.merge_cells('E2:E3');ws.merge_cells('F2:F3');ws.merge_cells('G2:G3')
+            headers={'A2':'ลำดับ','B2':'กลุ่ม/คณะ/สาขา','C2':'ระบบ','C3':'ระบบในเวลาราชการ','D3':'ระบบนอกเวลาราชการ','E2':'จำนวนผู้สำเร็จการศึกษา (A)','F2':'รวมจำนวนผลงานตีพิมพ์ระดับนานาชาติ Q1-Q2','G2':'ร้อยละ'}
+            for cell,val in headers.items():
+                ws[cell]=val;ws[cell].font=Font(bold=True,color='FFFFFF');ws[cell].fill=PatternFill('solid',fgColor='2F5D20');ws[cell].alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
+            for row in [2,3]:
+                ws.row_dimensions[row].height=34
+                for c in range(1,8):
+                    ws.cell(row,c).fill=PatternFill('solid',fgColor='2F5D20')
+                    ws.cell(row,c).border=Border(bottom=thin)
             ws.freeze_panes='A4';ws.column_dimensions['A'].width=9;ws.column_dimensions['B'].width=48
             for col in range(3,8):ws.column_dimensions[chr(64+col)].width=22
             for row in range(4,ws.max_row+1):
