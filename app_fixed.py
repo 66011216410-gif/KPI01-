@@ -149,12 +149,11 @@ def make_excel(data,raw_sheets):
     bio.seek(0);wb=load_workbook(bio);thin=Side(style='thin',color='000000')
     for ws in wb.worksheets:
         if ws.title in ['ปริญญาโท','ปริญญาเอก']:
-            # ลบคอลัมน์ที่ 4-7 (D:G) เฉพาะชีทปริญญาโทและปริญญาเอก
-            ws.delete_cols(4,4)
-
             # หัวตาราง 3 ชั้น
             ws.insert_rows(1,3)
-            ws.merge_cells('A1:C1')
+            # ลบแถวว่าง 4-6 แล้วเลื่อนข้อมูลขึ้นมาให้เริ่มที่แถว 4
+            ws.delete_rows(4,3)
+            ws.merge_cells('A1:G1')
             ws['A1']=PAGE_TITLE+' ระดับ'+ws.title
             ws['A1'].font=Font(bold=True,color='FFFFFF',size=16)
             ws['A1'].fill=PatternFill('solid',fgColor='2F5D20')
@@ -164,16 +163,25 @@ def make_excel(data,raw_sheets):
             # แถวหัวตารางหลัก
             ws.merge_cells('A2:A3')
             ws.merge_cells('B2:B3')
+            ws.merge_cells('C2:D2')
+            ws.merge_cells('E2:E3')
+            ws.merge_cells('F2:G2')
+
             ws['A2']='ลำดับ'
             ws['B2']='กลุ่ม/คณะ/สาขา'
-            ws['C2']='ระบบในเวลาราชการ'
-            ws['C3']=''
+            ws['C2']='ระบบ'
+            ws['E2']='จำนวนผู้สำเร็จ\nการศึกษา (A)'
+            ws['F2']='1.2.4 จำนวนผลงานระดับบัณฑิตศึกษาที่\nสามารถตีพิมพ์ในฐานข้อมูลนานาชาติ SCOPUS\nQ1-Q2'
 
-            # ปรับหัวตารางให้เหลือเฉพาะ 3 คอลัมน์ A:C
+            # แถวหัวตารางย่อย
+            ws['C3']='ระบบในเวลา\nราชการ'
+            ws['D3']='ระบบนอกเวลา\nราชการ'
+            ws['F3']='รวมจำนวนผลงานตีพิมพ์\nระดับนานาชาติ Q1-Q2'
+            ws['G3']='ร้อยละ'
 
             # เติมสีและจัดรูปแบบหัวตาราง
             for row in range(2,4):
-                for c in range(1,4):
+                for c in range(1,8):
                     ws.cell(row,c).fill=PatternFill('solid',fgColor='2F5D20' if row == 2 else '568B3B')
                     ws.cell(row,c).font=Font(bold=True,color='FFFFFF')
                     ws.cell(row,c).alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
@@ -183,14 +191,14 @@ def make_excel(data,raw_sheets):
             ws.freeze_panes='A4'
             ws.column_dimensions['A'].width=9
             ws.column_dimensions['B'].width=48
-            ws.column_dimensions['C'].width=28
+            for col in range(3,8):ws.column_dimensions[chr(64+col)].width=22
             for row in range(4,ws.max_row+1):
                 label=str(ws.cell(row,2).value or '')
                 if label.startswith('        '):ws.cell(row,2).value=label.strip();indent=2;fill='FFFFFF'
                 elif label.startswith('    '):ws.cell(row,2).value=label.strip();indent=1;fill='E2F0D9'
                 elif label=='รวมทั้งหมด':fill='FCE4D6';indent=0
                 else:fill='FCE4D6';indent=0
-                for c in range(1,4):ws.cell(row,c).fill=PatternFill('solid',fgColor=fill);ws.cell(row,c).border=Border(left=thin,right=thin,top=thin,bottom=thin)
+                for c in range(1,8):ws.cell(row,c).fill=PatternFill('solid',fgColor=fill);ws.cell(row,c).border=Border(left=thin,right=thin,top=thin,bottom=thin)
                 ws.cell(row,2).alignment=Alignment(horizontal='left',vertical='center',indent=indent)
         elif ws.title=='สรุป Scopus Q1-Q2':ws.freeze_panes='A2'
     out=io.BytesIO();wb.save(out);out.seek(0);return out
