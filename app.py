@@ -60,7 +60,7 @@ def prepare(df):
     if not level_col:raise ValueError("ไม่พบคอลัมน์ 'ระดับ' ในแถวที่ 2")
     if not q_col:raise ValueError("ไม่พบคอลัมน์ 'ผลงานที่ตีพิมพ์ Q1-Q2' และไม่พบ 'ฐานข้อมูล'")
     if not system_col:raise ValueError("ไม่พบคอลัมน์ 'ระบบ' ในแถวที่ 2")
-    out["__ระดับ"]=out[level_col].map(norm_level);out["__Q"]=out[q_col].map(norm_q);out["__ระบบดิบ"]=out[system_col].map(clean);out["__ระบบ"]=out[system_col].map(norm_system)
+    out["__ระดับ"]=out[level_col].map(norm_level);out["__Q"]=out[q_col].map(norm_q);out["__ระบบ"]=out[system_col].map(norm_system)
     out["__รหัส"]=out[student_col].map(clean) if student_col else "";out["__สถานะ"]=out[status_col].map(is_success) if status_col else True;out["__กลุ่ม"]=out[group_col].map(clean) if group_col else "";out["__คณะ"]=out[faculty_col].map(clean) if faculty_col else "";out["__สาขา"]=out[program_total_col].map(clean) if program_total_col else (out[program_col].map(clean) if program_col else "");out["__ลำดับ"]=range(len(out))
     out=out[out["__ระดับ"].isin(["ปริญญาโท","ปริญญาเอก"])].copy()
     return out,{"ระดับ":level_col,"Q1/Q2 ที่ใช้":q_col,"แหล่ง Q1/Q2":"ผลงานที่ตีพิมพ์ Q1-Q2" if q_main else "ฐานข้อมูล","ระบบ":system_col,"กลุ่ม":group_col,"คณะ":faculty_col,"สาขาที่ใช้":program_total_col or program_col,"รหัสนิสิต":student_col,"สถานะ":status_col}
@@ -96,20 +96,13 @@ def excel_bytes(master,doctor):
         master.to_excel(w,sheet_name="ปริญญาโท",index=False,startrow=3);doctor.to_excel(w,sheet_name="ปริญญาเอก",index=False,startrow=3)
     bio.seek(0);return bio
 
-st.title("📊 KPI01 — ตารางสถิติ");st.caption("หัวคอลัมน์อยู่แถวที่ 2 | ระดับจาก 'ระดับ' | Q1/Q2 จาก 'ผลงานที่ตีพิมพ์ Q1-Q2' หรือ 'ฐานข้อมูล' | ระบบจาก 'ระบบ'")
+st.title("📊 KPI01 — ตารางสถิติ")
+st.caption("หัวคอลัมน์อยู่แถวที่ 2 | ระดับจาก 'ระดับ' | Q1/Q2 จาก 'ผลงานที่ตีพิมพ์ Q1-Q2' หรือ 'ฐานข้อมูล' | ระบบจาก 'ระบบ'")
 uploaded=st.file_uploader("อัปโหลด Excel",type=["xlsx","xls"])
 if uploaded:
     try:
         sheet,raw=read_excel(uploaded);data,info=prepare(raw);master=hierarchy(data[data["__ระดับ"]=="ปริญญาโท"]);doctor=hierarchy(data[data["__ระดับ"]=="ปริญญาเอก"])
         st.success(f"อ่าน Sheet: {sheet} | ข้อมูล: {len(data):,} แถว")
-        with st.expander("🔎 ตรวจสอบคอลัมน์และค่าระบบ"):
-            st.write(info)
-            raw_system=data["__ระบบดิบ"].value_counts(dropna=False).rename_axis("ค่าจริงในคอลัมน์ ระบบ").reset_index(name="จำนวนแถว")
-            raw_system["การจัดกลุ่ม"]=raw_system["ค่าจริงในคอลัมน์ ระบบ"].map(norm_system)
-            # แสดงเฉพาะ 2 กลุ่มที่ต้องการ
-            display_system=raw_system[raw_system["การจัดกลุ่ม"].isin(["ในเวลา","นอกเวลา"])].copy()
-            st.subheader("ค่าระบบที่นำมาแสดง")
-            st.dataframe(display_system,use_container_width=True,hide_index=True)
         st.subheader("ปริญญาโท");st.dataframe(master,use_container_width=True,hide_index=True)
         st.subheader("ปริญญาเอก");st.dataframe(doctor,use_container_width=True,hide_index=True)
         st.download_button("📥 ดาวน์โหลด Excel KPI01",excel_bytes(master,doctor),"KPI01.xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
