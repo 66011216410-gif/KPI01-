@@ -207,7 +207,29 @@ def make_excel(data,raw_sheets):
                 else:fill='FCE4D6';indent=0
                 for c in range(1,8):ws.cell(row,c).fill=PatternFill('solid',fgColor=fill);ws.cell(row,c).border=all_border
                 ws.cell(row,2).alignment=Alignment(horizontal='left',vertical='center',indent=indent)
-        elif ws.title=='สรุป Scopus Q1-Q2':ws.freeze_panes='A2'
+        elif ws.title=='สรุป Scopus Q1-Q2':
+            # ตกแต่งตารางสรุป Scopus Q1-Q2
+            ws.freeze_panes='A2'
+            all_border=Border(left=thin,right=thin,top=thin,bottom=thin)
+            for cell in ws[1]:
+                cell.fill=PatternFill('solid',fgColor='2F5D20')
+                cell.font=Font(bold=True,color='FFFFFF')
+                cell.alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
+                cell.border=all_border
+            for row in ws.iter_rows(min_row=2,max_row=ws.max_row,min_col=1,max_col=4):
+                for cell in row:
+                    cell.border=all_border
+                    cell.alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
+                    if cell.row == ws.max_row:
+                        cell.fill=PatternFill('solid',fgColor='FCE4D6')
+                        cell.font=Font(bold=True)
+                    elif cell.column == 1:
+                        cell.fill=PatternFill('solid',fgColor='E2F0D9')
+            ws.row_dimensions[1].height=30
+            ws.column_dimensions['A'].width=24
+            ws.column_dimensions['B'].width=16
+            ws.column_dimensions['C'].width=16
+            ws.column_dimensions['D'].width=14
     out=io.BytesIO();wb.save(out);out.seek(0);return out
 
 st.title(PAGE_TITLE)
