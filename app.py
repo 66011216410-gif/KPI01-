@@ -29,10 +29,15 @@ def norm_q(v):
     if "Q2" in s:return "Q2"
     return "อื่น ๆ"
 def norm_system(v):
-    s=re.sub(r"\s+","",clean(v)).lower()
+    # รองรับค่าจริงในคอลัมน์ ระบบ เช่น
+    # ระบบในเวลาราชการ / ในเวลาราชการ / ระบบในเวลา / ในเวลา
+    # ระบบนอกเวลาราชการ / นอกเวลาราชการ / ระบบนอกเวลา / นอกเวลา
+    s=clean(v).lower()
+    s=re.sub(r"\s+","",s)
+    s=s.replace("ระบบ","",1) if s.startswith("ระบบ") else s
     if not s:return ""
-    if any(x in s for x in ["นอกเวลาราชการ","นอกเวลา","นอกเวล","parttime"]):return "นอกเวลา"
-    if any(x in s for x in ["ในเวลาราชการ","ในเวลา","ในเวล","fulltime"]):return "ในเวลา"
+    if any(x in s for x in ["นอกเวลาราชการ","นอกเวลา","นอกเวล","parttime","part-time"]):return "นอกเวลา"
+    if any(x in s for x in ["ในเวลาราชการ","ในเวลา","ในเวล","fulltime","full-time"]):return "ในเวลา"
     return ""
 def is_success(v):
     s=clean(v).lower()
@@ -70,7 +75,7 @@ def unique_students(df):
     ids=df["__รหัส"].astype(str).str.strip()
     return int(ids[ids!=""].nunique()) if ids.ne("").any() else len(df)
 def metrics(df):
-    # ระบบใน/นอก ให้นับเป็น "จำนวนแถว" จากคอลัมน์ ระบบ โดยตรง
+    # ระบบใน/นอก = จำนวนแถวในคอลัมน์ ระบบ โดยตรง ไม่ตัดตามสถานะและไม่นับรหัสนิสิตแบบไม่ซ้ำ
     inn=int((df["__ระบบ"]=="ในเวลา").sum())
     outn=int((df["__ระบบ"]=="นอกเวลา").sum())
     x=df[df["__สถานะ"]]
