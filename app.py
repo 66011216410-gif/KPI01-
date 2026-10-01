@@ -12,7 +12,7 @@ GROUP_ALIASES = ["กลุ่ม", "group"]
 FACULTY_ALIASES = ["คณะ", "faculty", "school"]
 PROGRAM_ALIASES = ["สาขา", "สาขาวิชา", "หลักสูตร", "program", "major"]
 COMBINED_ALIASES = ["กลุ่ม/คณะ/สาขา", "กลุ่ม คณะ สาขา", "กลุ่ม/คณะ", "ชื่อคณะ", "หน่วยงาน"]
-SYSTEM_ALIASES = ["ระบบ", "ประเภทระบบ", "ภาค", "แผนการศึกษา"]
+SYSTEM_ALIASES = ["ระบบ"]
 STUDENT_ID_ALIASES = ["รหัสนิสิต", "รหัสนักศึกษา", "รหัส", "student id", "student_id", "id"]
 STATUS_ALIASES = ["สถานะนิสิต", "สถานะนักศึกษา", "สถานะ", "status"]
 PROGRAM_TOTAL_ALIASES = ["สาขารวม", "สาขา รวม", "program total"]
@@ -49,11 +49,12 @@ def normalize_q(v):
 
 
 def normalize_system(v):
-    s = clean(v).lower().replace(" ", "")
+    s = clean(v).lower().replace(" ", "").replace("-", "")
     if not s: return "ไม่ระบุ"
-    if any(x in s for x in ["นอกเวลา", "parttime", "part-time"]): return "นอกเวลา"
-    if any(x in s for x in ["ในเวลา", "fulltime", "full-time"]): return "ในเวลา"
-    return clean(v)
+    # ยึดค่าจากคอลัมน์ "ระบบ" เท่านั้น
+    if any(x in s for x in ["นอกเวลา", "นอกเวลาราชการ", "parttime", "parttime"]): return "นอกเวลา"
+    if any(x in s for x in ["ในเวลา", "ในเวลาราชการ", "fulltime", "fulltime"]): return "ในเวลา"
+    return "อื่น ๆ"
 
 
 def is_success(v):
@@ -96,16 +97,17 @@ def prepare(df):
     status_col = find_col(out, STATUS_ALIASES)
     if not level_col: raise ValueError("ไม่พบคอลัมน์ 'ระดับ' ในแถวที่ 2")
     if not q_col: raise ValueError("ไม่พบคอลัมน์ 'ผลงานที่ตีพิมพ์ Q1-Q2' และไม่พบคอลัมน์สำรอง 'ฐานข้อมูล' ในแถวที่ 2")
+    if not system_col: raise ValueError("ไม่พบคอลัมน์ 'ระบบ' ในแถวที่ 2")
     if not (group_col or faculty_col or program_col or program_total_col or combined_col): raise ValueError("ไม่พบคอลัมน์สำหรับ กลุ่ม / คณะ / สาขา")
 
     out["__ระดับ"] = out[level_col].map(normalize_level)
     out["__Q"] = out[q_col].map(normalize_q)
-    out["__ระบบ"] = out[system_col].map(normalize_system) if system_col else "ไม่ระบุ"
+    # ระบบในเวลา/นอกเวลา ต้องมาจากคอลัมน์ "ระบบ" เท่านั้น
+    out["__ระบบ"] = out[system_col].map(normalize_system)
     out["__รหัสนิสิต"] = out[student_id_col].map(clean) if student_id_col else ""
     out["__สถานะ"] = out[status_col].map(is_success) if status_col else True
     out["__กลุ่ม"] = out[group_col].map(clean) if group_col else ""
     out["__คณะ"] = out[faculty_col].map(clean) if faculty_col else ""
-    # ถ้ามีคอลัมน์สาขารวม ให้ใช้เป็นชื่อแถวระดับสาขา
     out["__สาขา"] = out[program_total_col].map(clean) if program_total_col else (out[program_col].map(clean) if program_col else "")
     out["__รวมชื่อ"] = out[combined_col].map(clean) if combined_col else ""
     out["__ลำดับต้นฉบับ"] = range(len(out))
@@ -123,6 +125,7 @@ def unique_count(df):
 def metrics(data):
     g = data[data["__สถานะ"]]
     p = data[data["__Q"].isin(["Q1", "Q2"])]
+    # นับจากคอลัมน์ "ระบบ" ที่ normalize แล้วเท่านั้น
     in_count = unique_count(g[g["__ระบบ"] == "ในเวลา"])
     out_count = unique_count(g[g["__ระบบ"] == "นอกเวลา"])
     a = in_count + out_count
@@ -164,38 +167,38 @@ def export_excel(master, doctor):
     from openpyxl import load_workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     bio = io.BytesIO()
-    # startrow=3 ทำให้หัวตารางข้อมูลอยู่แถว 4 ทันที ไม่มีแถวว่าง 4-5
     with pd.ExcelWriter(bio, engine="openpyxl") as writer:
         master.to_excel(writer, sheet_name="ปริญญาโท", index=False, startrow=3)
         doctor.to_excel(writer, sheet_name="ปริญญาเอก", index=False, startrow=3)
-    bio.seek(0); wb = load_workbook(bio)
+    bio.seek(0)
+    wb = load_workbook(bio)
     fill1 = PatternFill("solid", fgColor="355E20"); fill2 = PatternFill("solid", fgColor="548235")
     font = Font(name="Tahoma", color="FFFFFF", bold=True); thin = Side(style="thin", color="000000")
     for ws in wb.worksheets:
         ws.merge_cells("A1:A3"); ws["A1"] = "ลำดับ"
         ws.merge_cells("B1:B3"); ws["B1"] = "กลุ่ม/คณะ/สาขา"
-        ws.merge_cells("C1:D1"); ws["C1"] = "ระบบ"; ws["C2"] = "ระบบในเวลาราชการ"; ws["D2"] = "ระบบนอกเวลาราชการ"
+        ws.merge_cells("C1:D1"); ws["C1"] = "ระบบ"
+        ws["C2"] = "ระบบในเวลาราชการ"; ws["D2"] = "ระบบนอกเวลาราชการ"
         ws.merge_cells("E1:E3"); ws["E1"] = "จำนวนผู้สำเร็จการศึกษา (A)"
         ws.merge_cells("F1:G1"); ws["F1"] = "1.2.4 จำนวนผลงานระดับบัณฑิตศึกษาที่สามารถตีพิมพ์ในระดับนานาชาติ SCOPUS Q1-Q2"
         ws.merge_cells("F2:F3"); ws["F2"] = "รวมจำนวนผลงานตีพิมพ์ระดับนานาชาติ Q1-Q2"
         ws.merge_cells("G2:G3"); ws["G2"] = "ร้อยละผลงานวิจัยรวมระดับนานาชาติ Q1-Q2"
         for row in ws.iter_rows(min_row=1, max_row=3, min_col=1, max_col=7):
             for cell in row:
-                cell.fill = fill1 if cell.row == 1 else fill2; cell.font = font; cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True); cell.border = Border(left=thin,right=thin,top=thin,bottom=thin)
+                cell.fill = fill1 if cell.row == 1 else fill2; cell.font = font; cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True); cell.border = Border(left=thin, right=thin, top=thin, bottom=thin)
         for row in ws.iter_rows(min_row=4):
             for cell in row:
-                cell.border = Border(left=thin,right=thin,top=thin,bottom=thin); cell.alignment = Alignment(vertical="center", wrap_text=True)
-        widths = {"A":8,"B":42,"C":18,"D":18,"E":20,"F":24,"G":24}
-        for c,w in widths.items(): ws.column_dimensions[c].width = w
+                cell.border = Border(left=thin, right=thin, top=thin, bottom=thin); cell.alignment = Alignment(vertical="center", wrap_text=True)
+        widths = {"A": 8, "B": 42, "C": 18, "D": 18, "E": 20, "F": 24, "G": 24}
+        for c, w in widths.items(): ws.column_dimensions[c].width = w
         ws.freeze_panes = "A4"
     out = io.BytesIO(); wb.save(out); out.seek(0); return out
 
 
 st.title("📊 KPI01 — ตารางสถิติผลงานระดับบัณฑิตศึกษา")
-st.caption("หัวคอลัมน์อยู่แถวที่ 2 | ระดับใช้คอลัมน์ ระดับ | Q1/Q2 ใช้ ผลงานที่ตีพิมพ์ Q1-Q2 และใช้ ฐานข้อมูล เป็นสำรอง | แถวสาขาใช้ สาขารวม")
+st.caption("หัวคอลัมน์อยู่แถวที่ 2 | ระดับใช้คอลัมน์ ระดับ | Q1/Q2 ใช้ ผลงานที่ตีพิมพ์ Q1-Q2 และใช้ ฐานข้อมูล เป็นสำรอง | ระบบใน/นอกเวลา นับจากคอลัมน์ ระบบ | แถวสาขาใช้ สาขารวม")
 
 uploaded = st.file_uploader("อัปโหลดไฟล์ Excel", type=["xlsx", "xls"])
-
 if uploaded:
     try:
         sheet_name, raw = read_workbook(uploaded)
@@ -205,14 +208,14 @@ if uploaded:
         st.success(f"อ่าน Sheet: {sheet_name} | หัวคอลัมน์แถวที่ 2 | ใช้คอลัมน์สาขา: {cols['สาขาที่ใช้']} | ใช้ข้อมูล {len(data):,} แถว")
         with st.expander("ตรวจสอบคอลัมน์"):
             st.write(cols)
+            st.write("ปริญญาโท:", int((data["__ระดับ"] == "ปริญญาโท").sum()))
+            st.write("ปริญญาเอก:", int((data["__ระดับ"] == "ปริญญาเอก").sum()))
+            st.write("ระบบในเวลา:", int((data["__ระบบ"] == "ในเวลา").sum()))
+            st.write("ระบบนอกเวลา:", int((data["__ระบบ"] == "นอกเวลา").sum()))
         tab1, tab2 = st.tabs(["🎓 ปริญญาโท", "🎓 ปริญญาเอก"])
-        with tab1:
-            st.dataframe(master, use_container_width=True, hide_index=True)
-        with tab2:
-            st.dataframe(doctor, use_container_width=True, hide_index=True)
+        with tab1: st.dataframe(master, use_container_width=True, hide_index=True)
+        with tab2: st.dataframe(doctor, use_container_width=True, hide_index=True)
         excel = export_excel(master, doctor)
         st.download_button("📥 ดาวน์โหลด Excel KPI01", excel, "KPI01_ปริญญาโท_ปริญญาเอก.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    except Exception as e:
-        st.error(str(e))
-else:
-    st.info("อัปโหลด Excel เพื่อสร้างตารางสถิติ")
+    except Exception as e: st.error(str(e))
+else: st.info("อัปโหลด Excel เพื่อสร้างตารางสถิติ")
