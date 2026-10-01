@@ -127,15 +127,31 @@ def hierarchy(data):
         nonlocal n
         key=(g,f,p);m=data['__กลุ่ม'].map(clean).eq(g)&data['__คณะ'].map(clean).eq(f)&data['__สาขา'].map(clean).eq(p)
         if p and key not in seen_p and m.any():seen_p.add(key);rows.append([n,'        '+p,*metrics(data[m])]);n+=1
+    def programs_for_faculty(g,f,preferred):
+        mask=data['__กลุ่ม'].map(clean).eq(g)&data['__คณะ'].map(clean).eq(f)&data['__สาขา'].map(clean).ne('')
+        actual=[];seen=set()
+        for p in data.loc[mask,'__สาขา'].map(clean):
+            if p and p not in seen:
+                seen.add(p);actual.append(p)
+        ordered=[]
+        for p in preferred:
+            if p in seen:
+                ordered.append(p)
+        ordered.extend(p for p in actual if p not in ordered)
+        return ordered
     for g,fs in ORDER_TREE:
         add_group(g)
         for f,ps in fs:
             add_faculty(g,f)
-            for p in ps:add_program(g,f,p)
+            for p in programs_for_faculty(g,f,ps):add_program(g,f,p)
     for _,r in data.sort_values('__ลำดับ').iterrows():
-        g,f,p=clean(r['__กลุ่ม']),clean(r['__คณะ']),clean(r['__สาขา']);add_group(g)
-        if g and f:add_faculty(g,f)
-        if g and f and p:add_program(g,f,p)
+        g,f=clean(r['__กลุ่ม']),clean(r['__คณะ'])
+        add_group(g)
+        if g and f:
+            add_faculty(g,f)
+            # แสดงทุกสาขาที่มีอยู่จริงในคณะ แม้ไม่ได้อยู่ใน ORDER_TREE
+            ps=programs_for_faculty(g,f,[])
+            for p in ps:add_program(g,f,p)
     rows.append(['','รวมทั้งหมด',*metrics(data)])
     return pd.DataFrame(rows,columns=cols)
 
@@ -177,7 +193,7 @@ def excel_bytes(master,doctor,summary):
         for r in range(4,ws.max_row+1):ws.row_dimensions[r].height=24
         for col,width in {'A':9,'B':52,'C':18,'D':20,'E':20,'F':30,'G':16}.items():ws.column_dimensions[col].width=width
         ws.freeze_panes='A4';ws.sheet_view.showGridLines=False
-    ws=wb['สรุป Scopus Q1-Q2'];
+    ws=wb['สรุป Scopus Q1-Q2']
     for row in ws.iter_rows():
         for c in row:c.border=border;c.alignment=Alignment(horizontal='center',vertical='center');c.font=Font(name='Tahoma',size=12)
     for c in ws[2]:c.fill=PatternFill('solid',fgColor=peach);c.font=Font(name='Tahoma',size=12,bold=True)
