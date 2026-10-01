@@ -5,7 +5,7 @@ import streamlit as st
 from openpyxl import load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
-st.set_page_config(page_title='KPI01', page_icon='📊', layout='wide')
+st.set_page_config(page_title='KPI01',page_icon='📊',layout='wide')
 LEVEL=['ระดับ','ระดับการศึกษา','degree']; Q_MAIN=['ฐานข้อมูล','ฐานข้อมูล ']; GROUP=['กลุ่มสาขา']; FACULTY=['คณะ','faculty']; PROGRAM_TOTAL=['สาขารวม','สาขา รวม','program total']; PROGRAM=['สาขา','สาขาวิชา','หลักสูตร','program','major']; SYSTEM=['ระบบ']; STUDENT=['รหัสนิสิต','รหัสนักศึกษา','รหัส','student id']
 
 def clean(v): return '' if pd.isna(v) else str(v).strip()
@@ -54,32 +54,48 @@ def prepare(df):
     if not system_col:raise ValueError("ไม่พบคอลัมน์ 'ระบบ' ในแถวที่ 2")
     if not group_col:raise ValueError("ไม่พบคอลัมน์ 'กลุ่มสาขา' ในแถวที่ 2")
 
-    # กลุ่ม = คอลัมน์กลุ่มสาขาเท่านั้น; เติมเฉพาะช่องว่างจาก Merge Cell
-    out['__กลุ่ม']=out[group_col].map(clean).replace('',pd.NA).ffill().fillna('')
+    # อ่านกลุ่มจากกลุ่มสาขาเท่านั้น และรองรับ Merge Cell
+    raw_group=out[group_col].map(clean).replace('',pd.NA).ffill().fillna('')
 
-    # คณะ = คอลัมน์คณะ; ห้ามลากค่าคณะข้ามกลุ่มสาขา
+    # อ่านคณะและสาขา โดยเติมเฉพาะภายในกลุ่ม/คณะเดียวกัน
     if faculty_col:
-        fv=out[faculty_col].map(clean).replace('',pd.NA); gs=out['__กลุ่ม'].map(clean); vals=[];cg=None;cf=''
-        for g,f in zip(gs,fv):
+        fv=out[faculty_col].map(clean).replace('',pd.NA); vals=[]; cg=None; cf=''
+        for g,f in zip(raw_group,fv):
             g=clean(g)
-            if g!=cg: cg=g;cf=''
+            if g!=cg: cg=g; cf=''
             if pd.notna(f) and clean(f)!='': cf=clean(f)
             vals.append(cf)
-        out['__คณะ']=vals
-    else: out['__คณะ']=''
+        raw_faculty=pd.Series(vals,index=out.index)
+    else: raw_faculty=pd.Series('',index=out.index)
 
-    # สาขารวม = คอลัมน์สาขารวม; ห้ามลากค่าข้ามคณะหรือกลุ่ม
     ps=out[program_total_col] if program_total_col else (out[program_col] if program_col else None)
     if ps is not None:
-        pv=ps.map(clean).replace('',pd.NA);gs=out['__กลุ่ม'].map(clean);fs=out['__คณะ'].map(clean);vals=[];cg=None;cf=None;cp=''
-        for g,f,p in zip(gs,fs,pv):
+        pv=ps.map(clean).replace('',pd.NA); vals=[]; cg=None; cf=None; cp=''
+        for g,f,p in zip(raw_group,raw_faculty,pv):
             g=clean(g);f=clean(f)
             if g!=cg or f!=cf: cg=g;cf=f;cp=''
             if pd.notna(p) and clean(p)!='': cp=clean(p)
             vals.append(cp)
-        out['__สาขา']=vals
-    else: out['__สาขา']=''
+        raw_program=pd.Series(vals,index=out.index)
+    else: raw_program=pd.Series('',index=out.index)
 
+    # กติกาสำคัญ: คณะหนึ่งอยู่ได้เพียงกลุ่มเดียว และสาขาหนึ่งอยู่ได้เพียงกลุ่มเดียว
+    # ใช้ค่ากลุ่มสาขาจากแถวที่พบครั้งแรกเป็นค่าหลัก แล้วบังคับทุกแถวของคณะ/สาขานั้นให้อยู่กลุ่มเดียวกัน
+    faculty_group={}; program_group={}
+    for g,f,p in zip(raw_group,raw_faculty,raw_program):
+        g=clean(g);f=clean(f);p=clean(p)
+        if g and f and f not in faculty_group: faculty_group[f]=g
+        if g and p and p not in program_group: program_group[p]=g
+
+    canonical_group=[]
+    for g,f,p in zip(raw_group,raw_faculty,raw_program):
+        g=clean(g);f=clean(f);p=clean(p)
+        if f and f in faculty_group: g=faculty_group[f]
+        if p and p in program_group: g=program_group[p]
+        canonical_group.append(g)
+    out['__กลุ่ม']=canonical_group
+    out['__คณะ']=raw_faculty.map(clean)
+    out['__สาขา']=raw_program.map(clean)
     out['__ระดับ']=out[level_col].map(norm_level);out['__Q']=out[base_col].map(norm_q);out['__ระบบ']=out[system_col].map(norm_system);out['__รหัส']=out[student_col].map(clean) if student_col else '';out['__ลำดับ']=range(len(out))
     return out[out['__ระดับ'].isin(['ปริญญาโท','ปริญญาเอก'])].copy()
 
@@ -96,7 +112,7 @@ def hierarchy(data):
     for _,r in data.sort_values('__ลำดับ').iterrows():
         group=clean(r['__กลุ่ม']);faculty=clean(r['__คณะ']);program=clean(r['__สาขา'])
         if group and ('g',group) not in seen:
-            seen.add(('g',group));rows.append([n,group,*metrics(data[data['__กลุ่ม'].map(clean).eq(group)])]);n+=1
+            seen.add(('g',group));m=data['__กลุ่ม'].map(clean).eq(group);rows.append([n,group,*metrics(data[m])]);n+=1
         if group and faculty and ('f',group,faculty) not in seen:
             seen.add(('f',group,faculty));m=data['__กลุ่ม'].map(clean).eq(group)&data['__คณะ'].map(clean).eq(faculty);rows.append([n,'    '+faculty,*metrics(data[m])]);n+=1
         if group and faculty and program and ('p',group,faculty,program) not in seen:
@@ -130,7 +146,7 @@ def excel_bytes(master,doctor):
         ws.freeze_panes='A7';ws.sheet_view.showGridLines=False
     out=io.BytesIO();wb.save(out);out.seek(0);return out
 
-st.title('📊 KPI01 — ตารางสถิติ');st.caption("หัวคอลัมน์อยู่แถวที่ 2 | ระดับจาก 'ระดับ' | Q1-Q2 นับจาก 'ฐานข้อมูล' เฉพาะ SCOPUS (Q1)/(Q2) | ระบบนับผู้เรียนแบบไม่ซ้ำรหัสนิสิต | A = ในเวลา + นอกเวลา | กลุ่มใช้คอลัมน์ 'กลุ่มสาขา' และคณะไม่ลากข้ามกลุ่ม")
+st.title('📊 KPI01 — ตารางสถิติ');st.caption("กลุ่มยึดจาก 'กลุ่มสาขา' | คณะ 1 คณะอยู่ 1 กลุ่ม | สาขา 1 สาขาอยู่ 1 กลุ่ม | ระบบไม่นับรหัสนิสิตซ้ำ | A = ในเวลา + นอกเวลา | Q1-Q2 จาก SCOPUS (Q1)/(Q2) ในฐานข้อมูล")
 uploaded=st.file_uploader('อัปโหลด Excel',type=['xlsx','xls'])
 if uploaded:
     try:
