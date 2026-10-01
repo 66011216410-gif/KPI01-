@@ -190,6 +190,8 @@ def make_excel(data,raw_sheets):
             ws.row_dimensions[2].height=54
             ws.row_dimensions[3].height=54
             ws.freeze_panes='A4'
+            # ลบคอลัมน์ที่ 4-7 (D:G) ออกจากตาราง Excel
+            ws.delete_cols(4,4)
             # ลบแถวว่างทั้งหมดในตาราง เพื่อให้ข้อมูลต่อเนื่องไม่มีช่องว่าง
             for r in range(ws.max_row,3,-1):
                 if all(ws.cell(r,c).value in (None,'') for c in range(1,8)):
