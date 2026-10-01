@@ -146,11 +146,13 @@ def make_excel(data,raw_sheets):
         q_summary(data).to_excel(w,sheet_name='สรุป Scopus Q1-Q2',index=False)
         used={'ปริญญาโท','ปริญญาเอก','สรุป Scopus Q1-Q2'}
         for name,raw in raw_sheets.items():raw.to_excel(w,sheet_name=safe_sheet_name(name,used),index=False)
-    bio.seek(0);wb=load_workbook(bio);thin=Side(style='thin',color='000000')
+    bio.seek(0);wb=load_workbook(bio);thin=Side(style='thin',color='000000');table_border=Border(left=thin,right=thin,top=thin,bottom=thin)
     for ws in wb.worksheets:
         if ws.title in ['ปริญญาโท','ปริญญาเอก']:
             # หัวตาราง 3 ชั้น ให้ตรงกับรูปแบบที่ต้องการ
             ws.insert_rows(1,3)
+            # ลบแถวว่าง 4-6 แล้วเลื่อนข้อมูลขึ้นมาให้เริ่มที่แถว 4
+            ws.delete_rows(4,3)
             ws.merge_cells('A1:G1')
             ws['A1']=PAGE_TITLE+' ระดับ'+ws.title
             ws['A1'].font=Font(bold=True,color='FFFFFF',size=16)
@@ -183,6 +185,7 @@ def make_excel(data,raw_sheets):
                     ws.cell(row,c).fill=PatternFill('solid',fgColor='2F5D20' if row == 2 else '568B3B')
                     ws.cell(row,c).font=Font(bold=True,color='FFFFFF')
                     ws.cell(row,c).alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
+                    ws.cell(row,c).border=table_border
 
             ws.row_dimensions[2].height=54
             ws.row_dimensions[3].height=54
@@ -196,7 +199,7 @@ def make_excel(data,raw_sheets):
                 elif label.startswith('    '):ws.cell(row,2).value=label.strip();indent=1;fill='E2F0D9'
                 elif label=='รวมทั้งหมด':fill='FCE4D6';indent=0
                 else:fill='FCE4D6';indent=0
-                for c in range(1,8):ws.cell(row,c).fill=PatternFill('solid',fgColor=fill);ws.cell(row,c).border=Border(bottom=thin)
+                for c in range(1,8):ws.cell(row,c).fill=PatternFill('solid',fgColor=fill);ws.cell(row,c).border=table_border
                 ws.cell(row,2).alignment=Alignment(horizontal='left',vertical='center',indent=indent)
         elif ws.title=='สรุป Scopus Q1-Q2':ws.freeze_panes='A2'
     out=io.BytesIO();wb.save(out);out.seek(0);return out
