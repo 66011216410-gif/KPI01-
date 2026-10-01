@@ -153,6 +153,11 @@ def make_excel(data,raw_sheets):
             ws.insert_rows(1,3)
             # ลบแถวว่าง 4-6 แล้วเลื่อนข้อมูลขึ้นมาให้เริ่มที่แถว 4
             ws.delete_rows(4,3)
+            # ลบแถวที่ 4 หากเป็นหัวตารางซ้ำจากข้อมูลที่เขียนโดย pandas
+            header_values = [ws.cell(4,c).value for c in range(1,8)]
+            expected_headers = ['ลำดับ','กลุ่ม/คณะ/สาขา','ระบบในเวลาราชการ','ระบบนอกเวลาราชการ','จำนวนผู้สำเร็จการศึกษา (A)','รวมจำนวนผลงานตีพิมพ์ระดับนานาชาติ Q1-Q2','ร้อยละ']
+            if header_values == expected_headers:
+                ws.delete_rows(4,1)
             ws.merge_cells('A1:G1')
             ws['A1']=PAGE_TITLE+' ระดับ'+ws.title
             ws['A1'].font=Font(bold=True,color='FFFFFF',size=16)
