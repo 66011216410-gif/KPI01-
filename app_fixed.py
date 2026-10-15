@@ -7,7 +7,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 PAGE_TITLE='ฐานข้อมูลจำนวนผลงานระดับบัณฑิตศึกษาที่ตีพิมพ์ในระดับนานาชาติ Scopus Q1, Q2'
 st.set_page_config(page_title=PAGE_TITLE, page_icon='📊', layout='wide')
-LEVEL=['ระดับ','ระดับการศึกษา','degree']; BASE=['ฐานข้อมูล','ฐานข้อมูล ']; GROUP=['กลุ่มสาขา']; FACULTY=['คณะ','faculty']; PROGRAM_TOTAL=['สาขารวม','สาขา รวม','program total']; PROGRAM=['สาขา','สาขาวิชา','หลักสูตร','program','major']; SYSTEM=['ระบบ']; STUDENT=['รหัสนิสิต','รหัสนักศึกษา','รหัส','student id']
+LEVEL=['ระดับ','ระดับการศึกษา','degree']; BASE=['ฐานข้อมูล','ฐานข้อมูล ']; PUB_TITLE=['ชื่อผลงานที่ตีพิมพ์','ชื่อผลงาน','ชื่อบทความ','ชื่อเรื่อง','ชื่อสิ่งพิมพ์','publication title','article title','title']; DOI_COL=['doi','digital object identifier']; GROUP=['กลุ่มสาขา']; FACULTY=['คณะ','faculty']; PROGRAM_TOTAL=['สาขารวม','สาขา รวม','program total']; PROGRAM=['สาขา','สาขาวิชา','หลักสูตร','program','major']; SYSTEM=['ระบบ']; STUDENT=['รหัสนิสิต','รหัสนักศึกษา','รหัส','student id']
 
 def clean(v): return '' if pd.isna(v) else str(v).strip()
 def norm_col(v): return re.sub(r'\s+','',clean(v)).lower()
@@ -43,7 +43,7 @@ def norm_system(v):
     return ''
 def prepare_sheet(df,sheet_name):
     out=df.copy();out.columns=[clean(c) for c in out.columns]
-    level_col=find_col(out,LEVEL);base_col=find_col(out,BASE);group_col=find_col(out,GROUP);faculty_col=find_col(out,FACULTY);program_total_col=find_col(out,PROGRAM_TOTAL);program_col=find_col(out,PROGRAM);system_col=find_col(out,SYSTEM);student_col=find_col(out,STUDENT)
+    level_col=find_col(out,LEVEL);base_col=find_col(out,BASE);title_col=find_col(out,PUB_TITLE);doi_col=find_col(out,DOI_COL);group_col=find_col(out,GROUP);faculty_col=find_col(out,FACULTY);program_total_col=find_col(out,PROGRAM_TOTAL);program_col=find_col(out,PROGRAM);system_col=find_col(out,SYSTEM);student_col=find_col(out,STUDENT)
     required=[]
     if not base_col:required.append('ฐานข้อมูล')
     if not group_col:required.append('กลุ่มสาขา')
@@ -82,7 +82,7 @@ def prepare_sheet(df,sheet_name):
         if f and f in faculty_group:g=faculty_group[f]
         elif p and p in program_group:g=program_group[p]
         canonical.append(g)
-    out['__ระดับ']=level;out['__กลุ่ม']=canonical;out['__คณะ']=faculty.map(clean);out['__สาขา']=program.map(clean);out['__Q']=out[base_col].map(norm_q);out['__ระบบ']=out[system_col].map(norm_system);out['__รหัส']=out[student_col].map(clean) if student_col else '';out['__ลำดับ']=range(len(out))
+    out['__ระดับ']=level;out['__กลุ่ม']=canonical;out['__คณะ']=faculty.map(clean);out['__สาขา']=program.map(clean);out['__Q']=out[base_col].map(norm_q);out['__ระบบ']=out[system_col].map(norm_system);out['__รหัส']=out[student_col].map(clean) if student_col else '';out['__ลำดับ']=range(len(out))\n    # สร้างรหัสผลงานเพื่อป้องกันการนับรายการเดียวซ้ำข้ามแถว/ชีต/ไฟล์\n    def key_text(v):return re.sub(r'\\s+',' ',clean(v)).strip().casefold()\n    if doi_col:\n        doi=out[doi_col].map(key_text).str.replace(r'^https?://(dx\\.)?doi\\.org/','',regex=True).str.replace(r'^doi\\s*:\\s*','',regex=True).str.strip()\n    else:doi=pd.Series('',index=out.index)\n    if title_col:title=out[title_col].map(key_text)\n    else:title=pd.Series('',index=out.index)\n    # ใช้ DOI ก่อน ตามด้วยชื่อผลงาน; หากไม่มีทั้งคู่ใช้ข้อมูลแถวนั้นเป็น fallback\n    row_cols=[c for c in out.columns if not str(c).startswith('__')]\n    fallback=out[row_cols].fillna('').astype(str).apply(lambda row:'|'.join(key_text(v) for v in row),axis=1)\n    out['__ผลงาน_key']=['doi:'+d if d else ('title:'+t if t else 'row:'+f) for d,t,f in zip(doi,title,fallback)]
     return out[out['__ระดับ'].isin(['ปริญญาโท','ปริญญาเอก'])].copy()
 @st.cache_data(show_spinner=False)
 def read_excel(file_bytes):
