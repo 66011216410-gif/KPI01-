@@ -309,6 +309,22 @@ if run_clicked:
                 st.error('ไม่พบไฟล์ที่มีข้อมูลปริญญาโท/ปริญญาเอกที่ใช้งานได้ กรุณาตรวจสอบไฟล์ที่อัปโหลด')
             else:
                 data = pd.concat(all_frames, ignore_index=True)
+                # รองรับผลลัพธ์จาก cache/ไฟล์เก่าที่อาจยังไม่มีคอลัมน์รหัสผลงาน
+                if '__ผลงาน_key' not in data.columns or data['__ผลงาน_key'].isna().any():
+                    def _key_text(v):
+                        return re.sub(r'\s+', ' ', clean(v)).strip().casefold()
+                    _doi_col = find_col(data, DOI_COL)
+                    _title_col = find_col(data, PUB_TITLE)
+                    _doi = data[_doi_col].map(_key_text).str.replace(r'^https?://(dx\.)?doi\.org/', '', regex=True).str.replace(r'^doi\s*:\s*', '', regex=True).str.strip() if _doi_col else pd.Series('', index=data.index)
+                    _title = data[_title_col].map(_key_text) if _title_col else pd.Series('', index=data.index)
+                    _source_cols = [c for c in data.columns if not str(c).startswith('__')]
+                    _fallback = data[_source_cols].fillna('').astype(str).apply(lambda row: '|'.join(_key_text(v) for v in row), axis=1)
+                    _generated = pd.Series(['doi:' + d if d else ('title:' + t if t else 'row:' + f) for d, t, f in zip(_doi, _title, _fallback)], index=data.index)
+                    if '__ผลงาน_key' not in data.columns:
+                        data['__ผลงาน_key'] = _generated
+                    else:
+                        _missing_key = data['__ผลงาน_key'].isna() | data['__ผลงาน_key'].astype(str).str.strip().eq('')
+                        data.loc[_missing_key, '__ผลงาน_key'] = _generated.loc[_missing_key]
                 # ให้แต่ละผลงาน Q1/Q2 ถูกนับเพียงครั้งเดียว แม้ซ้ำข้ามชีตหรือไฟล์
                 data['__Q_นับ'] = data['__Q']
                 qmask = data['__Q'].isin(['Q1','Q2'])
