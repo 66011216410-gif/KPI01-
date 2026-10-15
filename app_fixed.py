@@ -83,7 +83,17 @@ def prepare_sheet(df,sheet_name):
         elif p and p in program_group:g=program_group[p]
         canonical.append(g)
     out['__ระดับ']=level;out['__กลุ่ม']=canonical;out['__คณะ']=faculty.map(clean);out['__สาขา']=program.map(clean);out['__Q']=out[base_col].map(norm_q);out['__ระบบ']=out[system_col].map(norm_system);out['__รหัส']=out[student_col].map(clean) if student_col else '';out['__ลำดับ']=range(len(out))
-    # สร้างรหัสผลงานเพื่อป้องกันการนับรายการเดียวซ้ำข้ามแถว/ชีต/ไฟล์\n    def key_text(v):return re.sub(r'\\s+',' ',clean(v)).strip().casefold()\n    if doi_col:\n        doi=out[doi_col].map(key_text).str.replace(r'^https?://(dx\\.)?doi\\.org/','',regex=True).str.replace(r'^doi\\s*:\\s*','',regex=True).str.strip()\n    else:doi=pd.Series('',index=out.index)\n    if title_col:title=out[title_col].map(key_text)\n    else:title=pd.Series('',index=out.index)\n    # ใช้ DOI ก่อน ตามด้วยชื่อผลงาน; หากไม่มีทั้งคู่ใช้ข้อมูลแถวนั้นเป็น fallback\n    row_cols=[c for c in out.columns if not str(c).startswith('__')]\n    fallback=out[row_cols].fillna('').astype(str).apply(lambda row:'|'.join(key_text(v) for v in row),axis=1)\n    out['__ผลงาน_key']=['doi:'+d if d else ('title:'+t if t else 'row:'+f) for d,t,f in zip(doi,title,fallback)]
+    # สร้างรหัสผลงานเพื่อป้องกันการนับรายการเดียวซ้ำข้ามแถว/ชีต/ไฟล์
+    def key_text(v):return re.sub(r'\\s+',' ',clean(v)).strip().casefold()
+    if doi_col:
+        doi=out[doi_col].map(key_text).str.replace(r'^https?://(dx\\.)?doi\\.org/','',regex=True).str.replace(r'^doi\\s*:\\s*','',regex=True).str.strip()
+    else:doi=pd.Series('',index=out.index)
+    if title_col:title=out[title_col].map(key_text)
+    else:title=pd.Series('',index=out.index)
+    # ใช้ DOI ก่อน ตามด้วยชื่อผลงาน; หากไม่มีทั้งคู่ใช้ข้อมูลแถวนั้นเป็น fallback
+    row_cols=[c for c in out.columns if not str(c).startswith('__')]
+    fallback=out[row_cols].fillna('').astype(str).apply(lambda row:'|'.join(key_text(v) for v in row),axis=1)
+    out['__ผลงาน_key']=['doi:'+d if d else ('title:'+t if t else 'row:'+f) for d,t,f in zip(doi,title,fallback)]
     return out[out['__ระดับ'].isin(['ปริญญาโท','ปริญญาเอก'])].copy()
 @st.cache_data(show_spinner=False)
 def read_excel(file_bytes):
@@ -104,7 +114,10 @@ def count_system(df,kind):
     ids=x['__รหัส'].map(clean)
     return int(ids[ids!=''].nunique()+int((ids=='').sum()))
 def metrics(df):
-    inn=count_system(df,'ในเวลา');out=count_system(df,'นอกเวลา');a=inn+out;pub=int(df['__Q'].isin(['Q1','Q2']).sum());return inn,out,a,pub,round(pub*100/a,2) if a else 0
+    inn=count_system(df,'ในเวลา');out=count_system(df,'นอกเวลา');a=inn+out
+    q_col=df.get('__Q_นับ',df['__Q'])
+    pub=int(df.loc[q_col.isin(['Q1','Q2']),'__ผลงาน_key'].nunique())
+    return inn,out,a,pub,round(pub*100/a,2) if a else 0
 ORDER_TREE=[('กลุ่มมนุษยศาสตร์และสังคมศาสตร์',[('การเมืองการปกครอง',['รัฐศาสตร์']),('การท่องเที่ยวและการโรงแรม',['การจัดการการท่องเที่ยวและการโรงแรม']),('การบัญชีและการจัดการ',['การจัดการสมัยใหม่','การจัดการสมาร์ตซิตี้และนวัตกรรมดิจิทัล','การบัญชี','บริหารธุรกิจและนวัตกรรมดิจิทัล']),('ดุริยางคศิลป์',['ดุริยางคศิลป์']),('มนุษยศาสตร์และสังคมศาสตร์',['การสอนภาษาอังกฤษ','ภาษาไทย','ศาสนาและภูมิปัญญาเพื่อการพัฒนา']),('ศิลปกรรมศาสตร์และวัฒนธรรมศาสตร์',['การวิจัยและสร้างสรรค์ศิลปกรรมศาสตร์','วัฒนธรรมศาสตร์']),('ศึกษาศาสตร์',['เทคโนโลยีและสื่อสารการศึกษา','การบริหารและพัฒนาการศึกษา','วิจัยและประเมินผลการศึกษา','วิทยาศาสตร์การออกกำลังกายและการกีฬา','หลักสูตรและการสอน'])]),('กลุ่มวิทยาศาสตร์และเทคโนโลยี',[('เทคโนโลยี',['เกษตรศาสตร์','เทคโนโลยีการอาหาร']),('วิจัยวลัยรุกขเวช',['ความหลากหลายทางชีวภาพ']),('วิทยาการสารสนเทศ',['เทคโนโลยีสารสนเทศ','วิทยาการคอมพิวเตอร์','สื่อนฤมิต']),('วิทยาศาสตร์',['บรรพชีวินวิทยา','ฟิสิกส์']),('วิศวกรรมศาสตร์',['วิศวกรรมเครื่องกล','วิศวกรรมโยธา','วิศวกรรมไฟฟ้าและคอมพิวเตอร์']),('สิ่งแวดล้อมและทรัพยากรศาสตร์',['การจัดการสิ่งแวดล้อมอย่างยั่งยืน'])]),('กลุ่มวิทยาศาสตร์สุขภาพ',[('เภสัชศาสตร์',['เภสัชศาสตร์']),('แพทยศาสตร์',['วิทยาศาสตร์สุขภาพ']),('สาธารณสุขศาสตร์',['เทคโนโลยีทางสุขภาพและความปลอดภัย','สาธารณสุขศาสตรดุษฎีบัณฑิต'])])]
 def hierarchy(data):
     cols=['ลำดับ','กลุ่ม/คณะ/สาขา','ระบบในเวลาราชการ','ระบบนอกเวลาราชการ','จำนวนผู้สำเร็จการศึกษา (A)','รวมจำนวนผลงานตีพิมพ์ระดับนานาชาติ Q1-Q2','ร้อยละ'];rows=[];seen_g=set();seen_f=set();seen_p=set();n=1
@@ -139,7 +152,9 @@ def hierarchy(data):
     rows.append(['','รวมทั้งหมด',*metrics(data)]);return pd.DataFrame(rows,columns=cols)
 def q_summary(data):
     def vals(level):
-        x=data[data['__ระดับ']==level];q1=int((x['__Q']=='Q1').sum());q2=int((x['__Q']=='Q2').sum());return q1,q2,q1+q2
+        q_col=data.get('__Q_นับ',data['__Q'])
+        x=data[(data['__ระดับ']==level)&q_col.isin(['Q1','Q2'])].drop_duplicates('__ผลงาน_key')
+        q1=int((x['__Q']=='Q1').sum());q2=int((x['__Q']=='Q2').sum());return q1,q2,q1+q2
     m,d=vals('ปริญญาโท'),vals('ปริญญาเอก');return pd.DataFrame([['ระดับปริญญาโท',*m],['ระดับปริญญาเอก',*d],['รวม',m[0]+d[0],m[1]+d[1],m[2]+d[2]]],columns=['','Scopus Q1','Scopus Q2','รวม'])
 def safe_sheet_name(name,used):
     base='ข้อมูล_'+clean(name)[:25];base=re.sub(r'[\\/*?:\[\]]','_',base) or 'ข้อมูล';candidate=base;i=2
@@ -294,6 +309,12 @@ if run_clicked:
                 st.error('ไม่พบไฟล์ที่มีข้อมูลปริญญาโท/ปริญญาเอกที่ใช้งานได้ กรุณาตรวจสอบไฟล์ที่อัปโหลด')
             else:
                 data = pd.concat(all_frames, ignore_index=True)
+                # ให้แต่ละผลงาน Q1/Q2 ถูกนับเพียงครั้งเดียว แม้ซ้ำข้ามชีตหรือไฟล์
+                data['__Q_นับ'] = data['__Q']
+                qmask = data['__Q'].isin(['Q1','Q2'])
+                duplicate_q = qmask & data.loc[qmask, '__ผลงาน_key'].duplicated(keep='first').reindex(data.index, fill_value=False)
+                data.loc[duplicate_q, '__Q_นับ'] = ''
+                st.info(f"พบผลงาน Scopus Q1-Q2 ที่ไม่ซ้ำ {data.loc[qmask, '__ผลงาน_key'].nunique():,} รายการ จากข้อมูลที่เข้าเกณฑ์ {int(qmask.sum()):,} แถว")
                 st.success(f'อ่านข้อมูลสำเร็จ {len(file_success)} จาก {len(files)} ไฟล์')
                 with st.expander('รายละเอียดไฟล์ที่อ่านสำเร็จ'):
                     for msg in file_success:
