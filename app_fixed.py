@@ -84,9 +84,9 @@ def prepare_sheet(df,sheet_name):
         canonical.append(g)
     out['__ระดับ']=level;out['__กลุ่ม']=canonical;out['__คณะ']=faculty.map(clean);out['__สาขา']=program.map(clean);out['__Q']=out[base_col].map(norm_q);out['__ระบบ']=out[system_col].map(norm_system);out['__รหัส']=out[student_col].map(clean) if student_col else '';out['__ลำดับ']=range(len(out))
     # สร้างรหัสผลงานเพื่อป้องกันการนับรายการเดียวซ้ำข้ามแถว/ชีต/ไฟล์
-    def key_text(v):return re.sub(r'\\s+',' ',clean(v)).strip().casefold()
+    def key_text(v):return re.sub(r'\s+',' ',clean(v)).strip().casefold()
     if doi_col:
-        doi=out[doi_col].map(key_text).str.replace(r'^https?://(dx\\.)?doi\\.org/','',regex=True).str.replace(r'^doi\\s*:\\s*','',regex=True).str.strip()
+        doi=out[doi_col].map(key_text).str.replace(r'^https?://(dx\.)?doi\.org/','',regex=True).str.replace(r'^doi\s*:\s*','',regex=True).str.strip()
     else:doi=pd.Series('',index=out.index)
     if title_col:title=out[title_col].map(key_text)
     else:title=pd.Series('',index=out.index)
