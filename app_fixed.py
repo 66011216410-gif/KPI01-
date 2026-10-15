@@ -165,20 +165,25 @@ def make_excel(data,raw_sheets):
     with pd.ExcelWriter(bio,engine='openpyxl') as w:
         for level in ['ปริญญาโท','ปริญญาเอก']:hierarchy(data[data['__ระดับ']==level]).to_excel(w,sheet_name=level,index=False,startrow=3)
         q_summary(data).to_excel(w,sheet_name='สรุป Scopus Q1-Q2',index=False)
-        used={'ปริญญาโท','ปริญญาเอก','สรุป Scopus Q1-Q2'}
-        for name,raw in raw_sheets.items():
-            detail=raw.copy()
-            detail.columns=[clean(c) for c in detail.columns]
-            base_col=find_col(detail,BASE)
-            if base_col:
-                detail['Q ที่ใช้ในการนับ']=detail[base_col].map(norm_q)
-                detail['สถานะการนับ Q1-Q2']=detail['Q ที่ใช้ในการนับ'].map(
-                    lambda q: f'นับเป็น {q}' if q in ('Q1','Q2') else 'ไม่นับ'
-                )
-            else:
-                detail['Q ที่ใช้ในการนับ']=''
-                detail['สถานะการนับ Q1-Q2']='ตรวจไม่พบคอลัมน์ฐานข้อมูล'
-            detail.to_excel(w,sheet_name=safe_sheet_name(name,used),index=False)
+        # รวมข้อมูลดิบจากทุกชีต/ทุกไฟล์ไว้ใน Sheet เดียว
+        if raw_sheets:
+            details=[]
+            for name,raw in raw_sheets.items():
+                detail=raw.copy()
+                detail.columns=[clean(c) for c in detail.columns]
+                detail.insert(0,'แหล่งข้อมูล',name)
+                base_col=find_col(detail,BASE)
+                if base_col:
+                    detail['Q ที่ใช้ในการนับ']=detail[base_col].map(norm_q)
+                    detail['สถานะการนับ Q1-Q2']=detail['Q ที่ใช้ในการนับ'].map(
+                        lambda q: f'นับเป็น {q}' if q in ('Q1','Q2') else 'ไม่นับ'
+                    )
+                else:
+                    detail['Q ที่ใช้ในการนับ']=''
+                    detail['สถานะการนับ Q1-Q2']='ตรวจไม่พบคอลัมน์ฐานข้อมูล'
+                details.append(detail)
+            combined_detail=pd.concat(details,ignore_index=True,sort=False)
+            combined_detail.to_excel(w,sheet_name='ข้อมูล',index=False)
     bio.seek(0);wb=load_workbook(bio);thin=Side(style='thin',color='000000')
     for ws in wb.worksheets:
         if ws.title in ['ปริญญาโท','ปริญญาเอก']:
