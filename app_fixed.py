@@ -29,12 +29,12 @@ def level_from_sheet(name):
     if any(x in s for x in ['โท','ปริญญาโท','master']):return 'ปริญญาโท'
     return ''
 def norm_q(v):
-    # ตรวจคอลัมน์ฐานข้อมูลให้พบ SCOPUS Q1 หรือ SCOPUS Q2 แม้มีวงเล็บหรือเครื่องหมายคั่น
+    # นับเฉพาะรายการที่ระบุ SCOPUS Q1 หรือ SCOPUS Q2 ชัดเจน
     s=clean(v).upper()
-    compact=''.join(ch for ch in s if ch.isalnum())
-    if 'SCOPUSQ1' in compact:return 'Q1'
-    if 'SCOPUSQ2' in compact:return 'Q2'
-    return ''
+    matches=re.findall(r'(?<![A-Z0-9])SCOPUS\\s*[\\(\\[]?\\s*Q\\s*([12])(?![0-9])',s)
+    if not matches:return ''
+    # หากช่องมีทั้ง Q1 และ Q2 ให้เลือก Q ที่ระบุเป็นตัวแรกเพื่อไม่ให้นับแถวเดียวซ้ำ
+    return 'Q'+matches[0]
 def norm_system(v):
     s=re.sub(r'\s+','',clean(v)).lower()
     if s.startswith('ระบบ'):s=s[4:]
@@ -147,7 +147,19 @@ def make_excel(data,raw_sheets):
         for level in ['ปริญญาโท','ปริญญาเอก']:hierarchy(data[data['__ระดับ']==level]).to_excel(w,sheet_name=level,index=False,startrow=3)
         q_summary(data).to_excel(w,sheet_name='สรุป Scopus Q1-Q2',index=False)
         used={'ปริญญาโท','ปริญญาเอก','สรุป Scopus Q1-Q2'}
-        for name,raw in raw_sheets.items():raw.to_excel(w,sheet_name=safe_sheet_name(name,used),index=False)
+        for name,raw in raw_sheets.items():
+            detail=raw.copy()
+            detail.columns=[clean(c) for c in detail.columns]
+            base_col=find_col(detail,BASE)
+            if base_col:
+                detail['Q ที่ใช้ในการนับ']=detail[base_col].map(norm_q)
+                detail['สถานะการนับ Q1-Q2']=detail['Q ที่ใช้ในการนับ'].map(
+                    lambda q: f'นับเป็น {q}' if q in ('Q1','Q2') else 'ไม่นับ'
+                )
+            else:
+                detail['Q ที่ใช้ในการนับ']=''
+                detail['สถานะการนับ Q1-Q2']='ตรวจไม่พบคอลัมน์ฐานข้อมูล'
+            detail.to_excel(w,sheet_name=safe_sheet_name(name,used),index=False)
     bio.seek(0);wb=load_workbook(bio);thin=Side(style='thin',color='000000')
     for ws in wb.worksheets:
         if ws.title in ['ปริญญาโท','ปริญญาเอก']:
