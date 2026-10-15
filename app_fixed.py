@@ -183,6 +183,10 @@ def make_excel(data,raw_sheets):
                     detail['สถานะการนับ Q1-Q2']='ตรวจไม่พบคอลัมน์ฐานข้อมูล'
                 details.append(detail)
             combined_detail=pd.concat(details,ignore_index=True,sort=False)
+            # ตัดแถวข้อมูลที่ซ้ำกันข้ามชีต/ไฟล์ โดยไม่ใช้ชื่อแหล่งข้อมูลเป็นเงื่อนไข
+            compare_cols=[c for c in combined_detail.columns if c!='แหล่งข้อมูล']
+            before_dedup=len(combined_detail)
+            combined_detail=combined_detail.drop_duplicates(subset=compare_cols,keep='first').reset_index(drop=True)
             combined_detail.to_excel(w,sheet_name='ข้อมูล',index=False)
     bio.seek(0);wb=load_workbook(bio);thin=Side(style='thin',color='000000')
     for ws in wb.worksheets:
