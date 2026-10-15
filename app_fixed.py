@@ -31,7 +31,7 @@ def level_from_sheet(name):
 def norm_q(v):
     # นับเฉพาะรายการที่ระบุ SCOPUS Q1 หรือ SCOPUS Q2 ชัดเจน
     s=clean(v).upper()
-    matches=re.findall(r'(?<![A-Z0-9])SCOPUS\\s*[\\(\\[]?\\s*Q\\s*([12])(?![0-9])',s)
+    matches=re.findall(r'(?<![A-Z0-9])SCOPUS\s*[\(\[]?\s*Q\s*([12])(?![0-9])',s)
     if not matches:return ''
     # หากช่องมีทั้ง Q1 และ Q2 ให้เลือก Q ที่ระบุเป็นตัวแรกเพื่อไม่ให้นับแถวเดียวซ้ำ
     return 'Q'+matches[0]
