@@ -234,34 +234,69 @@ def make_excel(data,raw_sheets):
 
 st.title(PAGE_TITLE)
 st.caption('ระบบจัดทำสถิติผลงานระดับบัณฑิตศึกษา Scopus Q1-Q2 แยกปริญญาโทและปริญญาเอก')
-files=st.file_uploader('อัปโหลดไฟล์ Excel (เลือกได้หลายไฟล์)',type=['xlsx','xls'],accept_multiple_files=True)
-if files:
-    try:
-        all_frames=[];all_raw={};file_errors=[];file_success=[]
-        for uploaded in files:
-            try:
-                used,data,raw=read_excel(uploaded)
-                all_frames.append(data)
-                file_success.append(f"{uploaded.name}: {', '.join(used)}")
-                # ตั้งชื่อ Sheet ให้แยกกัน แม้หลายไฟล์จะมีชื่อ Sheet ซ้ำกัน
-                for sheet_name,raw_df in raw.items():
-                    key=f"{uploaded.name}_{sheet_name}"
-                    all_raw[key]=raw_df.copy()
-            except Exception as e:
-                file_errors.append(f"{uploaded.name}: {e}")
-        if file_errors:
-            for msg in file_errors: st.warning(f"ข้ามไฟล์ที่อ่านไม่ได้ — {msg}")
-        if not all_frames:
-            st.error('ไม่พบไฟล์ที่มีข้อมูลปริญญาโท/ปริญญาเอกที่ใช้งานได้ กรุณาตรวจสอบไฟล์ที่อัปโหลด')
-        else:
-            data=pd.concat(all_frames,ignore_index=True)
-            st.success(f'อ่านข้อมูลสำเร็จ {len(file_success)} จาก {len(files)} ไฟล์')
-            with st.expander('รายละเอียดไฟล์ที่อ่านสำเร็จ'):
-                for msg in file_success: st.write('• '+msg)
-            st.caption(f'รวมข้อมูลทั้งหมด {len(data):,} แถว')
-            for level in ['ปริญญาโท','ปริญญาเอก']:
-                st.subheader(level);st.dataframe(hierarchy(data[data['__ระดับ']==level]),use_container_width=True,hide_index=True)
-            st.subheader('สรุป Scopus Q1-Q2');st.dataframe(q_summary(data),use_container_width=True,hide_index=True)
-            st.download_button('ดาวน์โหลด Excel สถิติผลงานตีพิมพ์',data=make_excel(data,all_raw).getvalue(),file_name='สถิติผลงานตีพิมพ์.xlsx',mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    except Exception as e:st.error(f'ไม่สามารถประมวลผลไฟล์ได้: {e}')
-else:st.info('อัปโหลดไฟล์ Excel หนึ่งไฟล์หรือหลายไฟล์เพื่อสร้างตารางสถิติ')
+
+# เลือกไฟล์ให้ครบก่อน แล้วจึงกดปุ่มเพื่อเริ่มประมวลผล
+with st.form('upload_and_run_form'):
+    files = st.file_uploader(
+        'อัปโหลดไฟล์ Excel (เลือกได้หลายไฟล์)',
+        type=['xlsx', 'xls'],
+        accept_multiple_files=True
+    )
+    run_clicked = st.form_submit_button(
+        'รันประมวลผลสถิติ',
+        type='primary',
+        use_container_width=True
+    )
+
+if run_clicked:
+    if not files:
+        st.warning('กรุณาอัปโหลดไฟล์ Excel อย่างน้อยหนึ่งไฟล์ก่อนกดรัน')
+    else:
+        try:
+            all_frames = []
+            all_raw = {}
+            file_errors = []
+            file_success = []
+            for uploaded in files:
+                try:
+                    used, data_part, raw = read_excel(uploaded)
+                    all_frames.append(data_part)
+                    file_success.append(f"{uploaded.name}: {', '.join(used)}")
+                    # ตั้งชื่อ Sheet ให้แยกกัน แม้หลายไฟล์จะมีชื่อ Sheet ซ้ำกัน
+                    for sheet_name, raw_df in raw.items():
+                        key = f"{uploaded.name}_{sheet_name}"
+                        all_raw[key] = raw_df.copy()
+                except Exception as e:
+                    file_errors.append(f"{uploaded.name}: {e}")
+
+            for msg in file_errors:
+                st.warning(f"ข้ามไฟล์ที่อ่านไม่ได้ — {msg}")
+
+            if not all_frames:
+                st.error('ไม่พบไฟล์ที่มีข้อมูลปริญญาโท/ปริญญาเอกที่ใช้งานได้ กรุณาตรวจสอบไฟล์ที่อัปโหลด')
+            else:
+                data = pd.concat(all_frames, ignore_index=True)
+                st.success(f'อ่านข้อมูลสำเร็จ {len(file_success)} จาก {len(files)} ไฟล์')
+                with st.expander('รายละเอียดไฟล์ที่อ่านสำเร็จ'):
+                    for msg in file_success:
+                        st.write('• ' + msg)
+                st.caption(f'รวมข้อมูลทั้งหมด {len(data):,} แถว')
+                for level in ['ปริญญาโท', 'ปริญญาเอก']:
+                    st.subheader(level)
+                    st.dataframe(
+                        hierarchy(data[data['__ระดับ'] == level]),
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                st.subheader('สรุป Scopus Q1-Q2')
+                st.dataframe(q_summary(data), use_container_width=True, hide_index=True)
+                st.download_button(
+                    'ดาวน์โหลด Excel สถิติผลงานตีพิมพ์',
+                    data=make_excel(data, all_raw).getvalue(),
+                    file_name='สถิติผลงานตีพิมพ์.xlsx',
+                    mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                )
+        except Exception as e:
+            st.error(f'ไม่สามารถประมวลผลไฟล์ได้: {e}')
+else:
+    st.info('เลือกไฟล์ Excel ให้ครบก่อน จากนั้นกด “รันประมวลผลสถิติ” เพื่อสร้างตาราง')
