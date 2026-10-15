@@ -84,8 +84,11 @@ def prepare_sheet(df,sheet_name):
         canonical.append(g)
     out['__ระดับ']=level;out['__กลุ่ม']=canonical;out['__คณะ']=faculty.map(clean);out['__สาขา']=program.map(clean);out['__Q']=out[base_col].map(norm_q);out['__ระบบ']=out[system_col].map(norm_system);out['__รหัส']=out[student_col].map(clean) if student_col else '';out['__ลำดับ']=range(len(out))
     return out[out['__ระดับ'].isin(['ปริญญาโท','ปริญญาเอก'])].copy()
-def read_excel(uploaded):
-    uploaded.seek(0);sheets=pd.read_excel(uploaded,sheet_name=None,header=1);frames=[];used=[];raw_sheets={};errors=[]
+@st.cache_data(show_spinner=False)
+def read_excel(file_bytes):
+    # อ่าน workbook จาก bytes เพียงครั้งเดียว แล้วใช้ DataFrame ชุดเดิมทั้งการคำนวณและ export
+    sheets=pd.read_excel(io.BytesIO(file_bytes),sheet_name=None,header=1)
+    frames=[];used=[];raw_sheets={};errors=[]
     for name,df in sheets.items():
         if df is None or df.empty:continue
         try:
@@ -273,7 +276,7 @@ if run_clicked:
             file_success = []
             for uploaded in files:
                 try:
-                    used, data_part, raw = read_excel(uploaded)
+                    used, data_part, raw = read_excel(uploaded.getvalue())
                     all_frames.append(data_part)
                     file_success.append(f"{uploaded.name}: {', '.join(used)}")
                     # ตั้งชื่อ Sheet ให้แยกกัน แม้หลายไฟล์จะมีชื่อ Sheet ซ้ำกัน
