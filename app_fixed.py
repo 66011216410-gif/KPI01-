@@ -201,38 +201,38 @@ def hierarchy(data):
             add_faculty(g,f)
             for p in programs_for_faculty(g,f,[]):add_program(g,f,p)
     rows.append(['','รวมทั้งหมด',*metrics(data)]);return pd.DataFrame(rows,columns=cols)
-def q_summary(data):
-    # สรุป KPI 1.2.4 แยกฐานข้อมูลและ Quartile ตามรูปแบบ 10 คอลัมน์ที่กำหนด
+def q_summary(data, level):
+    # สรุป KPI 1.2.4 ในชีตของแต่ละระดับการศึกษา แยกฐานข้อมูลและ Quartile
     q_col=data.get('__Q_นับ',data['__Q'])
     work_key='__ผลงาน_key'
-    def count(level, database, q):
+    def count(database, q):
         subset=data[(data['__ระดับ']==level)&(q_col==q)].copy()
         db_pattern = r'WEB\s*OF\s*SCIENCE|WOS|ISI\s*WEB\s*OF\s*SCIENCE' if database=='WoS' else r'SCOPUS'
         mask=subset.apply(lambda row: bool(re.search(db_pattern, ' '.join(clean(v).upper() for v in row.tolist()))),axis=1)
         subset=subset[mask]
         return int(subset[work_key].nunique()) if work_key in subset.columns else int(len(subset))
     values=[
-        count('ปริญญาเอก','Scopus','Q1'),
-        count('ปริญญาเอก','Scopus','Q2'),
-        count('ปริญญาเอก','WoS','Q1'),
-        count('ปริญญาเอก','WoS','Q2'),
+        count('Scopus','Q1'),
+        count('Scopus','Q2'),
+        count('WoS','Q1'),
+        count('WoS','Q2'),
     ]
     total=sum(values)
-    # ร้อยละเป็นสัดส่วนของแต่ละกลุ่มต่อผลงาน Q1-Q2 ระดับปริญญาเอกทั้งหมด
     percents=[round(v/total*100,2) if total else 0 for v in values]
+    level_label='ปริญญาเอก' if level=='ปริญญาเอก' else 'ปริญญาโท'
     return pd.DataFrame([[
         values[0],percents[0],values[1],percents[1],
         values[2],percents[2],values[3],percents[3],
         total,100.0 if total else 0
     ]],columns=[
         'จำนวนผลงานตีพิมพ์ในวารสารระดับนานาชาติ SCOPUS Q1',
-        'ร้อยละผลงานวิจัยนิสิตระดับปริญญาเอกได้รับการตีพิมพ์เผยแพร่ใน SCOPUS Q1',
+        f'ร้อยละผลงานวิจัยนิสิตระดับ{level_label}ได้รับการตีพิมพ์เผยแพร่ใน SCOPUS Q1',
         'จำนวนผลงานตีพิมพ์ในวารสารระดับนานาชาติ SCOPUS Q2',
-        'ร้อยละผลงานวิจัยนิสิตระดับปริญญาเอกได้รับการตีพิมพ์เผยแพร่ใน SCOPUS Q2',
+        f'ร้อยละผลงานวิจัยนิสิตระดับ{level_label}ได้รับการตีพิมพ์เผยแพร่ใน SCOPUS Q2',
         'จำนวนผลงานตีพิมพ์ในวารสารระดับนานาชาติ Web of Science Q1',
-        'ร้อยละผลงานวิจัยนิสิตระดับปริญญาเอกได้รับการตีพิมพ์เผยแพร่ใน Web of Science Q1',
+        f'ร้อยละผลงานวิจัยนิสิตระดับ{level_label}ได้รับการตีพิมพ์เผยแพร่ใน Web of Science Q1',
         'จำนวนผลงานตีพิมพ์ในวารสารระดับนานาชาติ Web of Science Q2',
-        'ร้อยละผลงานวิจัยนิสิตระดับปริญญาเอกได้รับการตีพิมพ์เผยแพร่ใน Web of Science Q2',
+        f'ร้อยละผลงานวิจัยนิสิตระดับ{level_label}ได้รับการตีพิมพ์เผยแพร่ใน Web of Science Q2',
         'รวมจำนวนผลงานตีพิมพ์ในวารสารระดับนานาชาติ Q1-Q2',
         'ร้อยละผลงานวิจัยรวมจำนวนผลงานตีพิมพ์ในวารสารระดับนานาชาติ Q1-Q2'
     ])
@@ -243,8 +243,12 @@ def safe_sheet_name(name,used):
 def make_excel(data,raw_sheets):
     bio=io.BytesIO()
     with pd.ExcelWriter(bio,engine='openpyxl') as w:
-        for level in ['ปริญญาโท','ปริญญาเอก']:hierarchy(data[data['__ระดับ']==level]).to_excel(w,sheet_name=level,index=False,startrow=3)
-        q_summary(data).to_excel(w,sheet_name='สรุป Scopus-WoS Q1-Q2',index=False)
+        for level in ['ปริญญาโท','ปริญญาเอก']:
+            level_data=data[data['__ระดับ']==level]
+            h=hierarchy(level_data)
+            h.to_excel(w,sheet_name=level,index=False,startrow=3)
+            # เพิ่มตาราง KPI 1.2.4 ต่อท้ายในชีตของระดับนั้น ไม่สร้างชีตรวมแยก
+            q_summary(data,level).to_excel(w,sheet_name=level,index=False,startrow=5+len(h))
         # รวมข้อมูลดิบจากทุกชีต/ทุกไฟล์ไว้ใน Sheet เดียว
         if raw_sheets:
             details=[]
@@ -332,71 +336,34 @@ def make_excel(data,raw_sheets):
                 else:fill='FCE4D6';indent=0
                 for c in range(1,8):ws.cell(row,c).fill=PatternFill('solid',fgColor=fill);ws.cell(row,c).border=all_border
                 ws.cell(row,2).alignment=Alignment(horizontal='left',vertical='center',indent=indent)
-        elif ws.title=='สรุป Scopus-WoS Q1-Q2':
-            # ตกแต่งตาราง KPI 1.2.4 แบบ 10 คอลัมน์
-            ws.insert_rows(1,3)
-            ws.merge_cells(start_row=1,start_column=1,end_row=1,end_column=10)
-            ws['A1']='1.2.4 จำนวนผลงานระดับบัณฑิตศึกษาที่สามารถตีพิมพ์ในระดับนานาชาติ SCOPUS Q1-Q2'
-            ws['A1'].font=Font(bold=True,color='FFFFFF',size=14)
-            ws['A1'].fill=PatternFill('solid',fgColor='2F5D20')
-            ws['A1'].alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
-            ws.row_dimensions[1].height=34
-            ws.merge_cells('A2:A3'); ws.merge_cells('B2:B3')
-            ws.merge_cells('C2:C3'); ws.merge_cells('D2:D3')
-            ws.merge_cells('E2:E3'); ws.merge_cells('F2:F3')
-            ws.merge_cells('G2:G3'); ws.merge_cells('H2:H3')
-            ws.merge_cells('I2:I3'); ws.merge_cells('J2:J3')
+            # จัดรูปแบบตาราง KPI 1.2.4 ที่ต่อท้ายตารางหลักในชีตระดับการศึกษา
+            level_data=data[data['__ระดับ']==ws.title]
+            h=hierarchy(level_data)
+            title_row=5+len(h)
+            header_row=6+len(h)
+            data_row=header_row+1
+            ws.merge_cells(start_row=title_row,start_column=1,end_row=title_row,end_column=10)
+            title_cell=ws.cell(title_row,1)
+            title_cell.value='1.2.4 จำนวนผลงานระดับบัณฑิตศึกษาที่สามารถตีพิมพ์ในระดับนานาชาติ SCOPUS และ Web of Science Q1-Q2'
+            title_cell.font=Font(bold=True,color='FFFFFF',size=14)
+            title_cell.fill=PatternFill('solid',fgColor='2F5D20')
+            title_cell.alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
+            ws.row_dimensions[title_row].height=34
             for col in range(1,11):
-                cell=ws.cell(2,col)
-                cell.value=ws.cell(4,col).value
-                cell.fill=PatternFill('solid',fgColor='2F5D20')
-                cell.font=Font(bold=True,color='FFFFFF')
-                cell.alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
-                cell.border=all_border
-                ws.cell(3,col).fill=PatternFill('solid',fgColor='568B3B')
-                ws.cell(3,col).border=all_border
-            ws.row_dimensions[2].height=100
-            ws.row_dimensions[3].height=35
-            for col in range(1,11):
-                ws.column_dimensions[chr(64+col)].width=25
-            ws.freeze_panes='A5'
-            for row in ws.iter_rows(min_row=4,max_row=ws.max_row,min_col=1,max_col=10):
-                for cell in row:
-                    cell.border=all_border
-                    cell.alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
-                    if cell.data_type=='n' and cell.column in [2,4,6,8,10]:
-                        cell.number_format='0.00"%"'
-            ws.column_dimensions['A'].width=30
-            ws.column_dimensions['B'].width=32
-            ws.column_dimensions['C'].width=30
-            ws.column_dimensions['D'].width=32
-            ws.column_dimensions['E'].width=30
-            ws.column_dimensions['F'].width=32
-            ws.column_dimensions['G'].width=30
-            ws.column_dimensions['H'].width=32
-            ws.column_dimensions['I'].width=28
-            ws.column_dimensions['J'].width=30
-            ws.freeze_panes='A2'
-            all_border=Border(left=thin,right=thin,top=thin,bottom=thin)
-            for cell in ws[1]:
-                cell.fill=PatternFill('solid',fgColor='2F5D20')
-                cell.font=Font(bold=True,color='FFFFFF')
-                cell.alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
-                cell.border=all_border
-            for row in ws.iter_rows(min_row=2,max_row=ws.max_row,min_col=1,max_col=4):
-                for cell in row:
-                    cell.border=all_border
-                    cell.alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
-                    if cell.row == ws.max_row:
-                        cell.fill=PatternFill('solid',fgColor='FCE4D6')
-                        cell.font=Font(bold=True)
-                    elif cell.column == 1:
-                        cell.fill=PatternFill('solid',fgColor='E2F0D9')
-            ws.row_dimensions[1].height=30
-            ws.column_dimensions['A'].width=24
-            ws.column_dimensions['B'].width=16
-            ws.column_dimensions['C'].width=16
-            ws.column_dimensions['D'].width=14
+                header=ws.cell(header_row,col)
+                header.fill=PatternFill('solid',fgColor='2F5D20')
+                header.font=Font(bold=True,color='FFFFFF')
+                header.alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
+                header.border=all_border
+                value_cell=ws.cell(data_row,col)
+                value_cell.border=all_border
+                value_cell.alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
+                if col in [2,4,6,8,10]:
+                    value_cell.number_format='0.00"%"'
+            ws.row_dimensions[header_row].height=100
+            ws.row_dimensions[data_row].height=32
+            for col,width in enumerate([30,32,30,32,30,32,30,32,28,30],start=1):
+                ws.column_dimensions[chr(64+col)].width=width
     out=io.BytesIO();wb.save(out);out.seek(0);return out
 
 st.title(PAGE_TITLE)
