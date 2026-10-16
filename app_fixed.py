@@ -200,6 +200,9 @@ def make_excel(data,raw_sheets):
             for name,raw in raw_sheets.items():
                 detail=raw.copy()
                 detail.columns=[clean(c) for c in detail.columns]
+                # ป้องกันไฟล์ต้นทางมีคอลัมน์ชื่อ "แหล่งข้อมูล" อยู่แล้ว
+                if 'แหล่งข้อมูล' in detail.columns:
+                    detail=detail.rename(columns={'แหล่งข้อมูล':'แหล่งข้อมูลเดิม'})
                 detail.insert(0,'แหล่งข้อมูล',name)
                 base_col=find_col(detail,BASE)
                 if base_col:
