@@ -5,7 +5,7 @@ import streamlit as st
 from openpyxl import load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
-PAGE_TITLE='ฐานข้อมูลจำนวนผลงานระดับบัณฑิตศึกษาที่ตีพิมพ์ในระดับนานาชาติ Scopus Q1, Q2'
+PAGE_TITLE='ฐานข้อมูลจำนวนผลงานระดับบัณฑิตศึกษาที่ตีพิมพ์ในระดับนานาชาติ Scopus และ Web of Science Q1, Q2'
 st.set_page_config(page_title=PAGE_TITLE, page_icon='📊', layout='wide')
 LEVEL=['ระดับ','ระดับการศึกษา','degree']; BASE=['ฐานข้อมูล','ฐานข้อมูล ']; PUB_TITLE=['ชื่อผลงานที่ตีพิมพ์','ชื่อผลงาน','ชื่อบทความ','ชื่อเรื่อง','ชื่อสิ่งพิมพ์','publication title','article title','title']; DOI_COL=['doi','digital object identifier']; GROUP=['กลุ่มสาขา']; FACULTY=['คณะ','faculty']; PROGRAM_TOTAL=['สาขารวม','สาขา รวม','program total']; PROGRAM=['สาขา','สาขาวิชา','หลักสูตร','program','major']; SYSTEM=['ระบบ']; STUDENT=['รหัสนิสิต','รหัสนักศึกษา','รหัส','student id']
 
@@ -28,13 +28,17 @@ def level_from_sheet(name):
     if any(x in s for x in ['เอก','ปริญญาเอก','phd','doctoral']):return 'ปริญญาเอก'
     if any(x in s for x in ['โท','ปริญญาโท','master']):return 'ปริญญาโท'
     return ''
-def norm_q(v):
-    # นับ Scopus และ Web of Science (WoS) เฉพาะรายการที่ระบุ Q1 หรือ Q2 ชัดเจน
+def norm_q(v, context=''):
+    # ตรวจชื่อฐานข้อมูลในคอลัมน์ฐานข้อมูล และตรวจ Q1/Q2 ทั้งในช่องเดียวกันหรือคอลัมน์อื่นของแถวเดียวกัน
     s=clean(v).upper()
-    database=r'(?:SCOPUS|WEB\s+OF\s+SCIENCE|WOS|ISI\s+WEB\s+OF\s+SCIENCE)'
-    matches=re.findall(r'(?<![A-Z0-9])'+database+r'\s*[\(\[]?\s*Q\s*([12])(?![0-9])',s)
+    ctx=clean(context).upper()
+    database=r'(?:SCOPUS|WEB\s*OF\s*SCIENCE|WOS|ISI\s*WEB\s*OF\s*SCIENCE|WEB\s*OF\s*SCIENCE\s*CORE\s*COLLECTION)'
+    if not re.search(database,s):
+        return ''
+    # รองรับรูปแบบ Web of Science - Q1, Web of Science (Q1), WOS Q2,
+    # รวมถึงกรณีฐานข้อมูลกับ quartile อยู่คนละคอลัมน์ในแถวเดียวกัน
+    matches=re.findall(r'(?<![A-Z0-9])Q\s*([12])(?![0-9])',s+' '+ctx)
     if not matches:return ''
-    # หากช่องมีทั้ง Q1 และ Q2 ให้เลือก Q ที่ระบุเป็นตัวแรกเพื่อไม่ให้นับแถวเดียวซ้ำ
     return 'Q'+matches[0]
 def norm_system(v):
     s=re.sub(r'\s+','',clean(v)).lower()
@@ -83,7 +87,7 @@ def prepare_sheet(df,sheet_name,file_name=''):
         if f and f in faculty_group:g=faculty_group[f]
         elif p and p in program_group:g=program_group[p]
         canonical.append(g)
-    out['__ระดับ']=level;out['__กลุ่ม']=canonical;out['__คณะ']=faculty.map(clean);out['__สาขา']=program.map(clean);out['__Q']=out[base_col].map(norm_q);out['__ระบบ']=out[system_col].map(norm_system);out['__รหัส']=out[student_col].map(clean) if student_col else '';out['__ลำดับ']=range(len(out))
+    out['__ระดับ']=level;out['__กลุ่ม']=canonical;out['__คณะ']=faculty.map(clean);out['__สาขา']=program.map(clean);out['__Q']=out.apply(lambda row: norm_q(row[base_col], ' '.join(clean(v) for v in row.tolist())), axis=1);out['__ระบบ']=out[system_col].map(norm_system);out['__รหัส']=out[student_col].map(clean) if student_col else '';out['__ลำดับ']=range(len(out))
     # สร้างรหัสผลงานเพื่อป้องกันการนับรายการเดียวซ้ำข้ามแถว/ชีต/ไฟล์
     def key_text(v):return re.sub(r'\s+',' ',clean(v)).strip().casefold()
     if doi_col:
@@ -179,7 +183,7 @@ def q_summary(data):
         q_col=data.get('__Q_นับ',data['__Q'])
         x=data[(data['__ระดับ']==level)&q_col.isin(['Q1','Q2'])].drop_duplicates('__ผลงาน_key')
         q1=int((x['__Q']=='Q1').sum());q2=int((x['__Q']=='Q2').sum());return q1,q2,q1+q2
-    m,d=vals('ปริญญาโท'),vals('ปริญญาเอก');return pd.DataFrame([['ระดับปริญญาโท',*m],['ระดับปริญญาเอก',*d],['รวม',m[0]+d[0],m[1]+d[1],m[2]+d[2]]],columns=['','Scopus Q1','Scopus Q2','รวม'])
+    m,d=vals('ปริญญาโท'),vals('ปริญญาเอก');return pd.DataFrame([['ระดับปริญญาโท',*m],['ระดับปริญญาเอก',*d],['รวม',m[0]+d[0],m[1]+d[1],m[2]+d[2]]],columns=['','Scopus/WoS Q1','Scopus/WoS Q2','รวม'])
 def safe_sheet_name(name,used):
     base='ข้อมูล_'+clean(name)[:25];base=re.sub(r'[\\/*?:\[\]]','_',base) or 'ข้อมูล';candidate=base;i=2
     while candidate in used:candidate=f'{base[:28-len(str(i))]}_{i}';i+=1
@@ -188,7 +192,7 @@ def make_excel(data,raw_sheets):
     bio=io.BytesIO()
     with pd.ExcelWriter(bio,engine='openpyxl') as w:
         for level in ['ปริญญาโท','ปริญญาเอก']:hierarchy(data[data['__ระดับ']==level]).to_excel(w,sheet_name=level,index=False,startrow=3)
-        q_summary(data).to_excel(w,sheet_name='สรุป Scopus Q1-Q2',index=False)
+        q_summary(data).to_excel(w,sheet_name='สรุป Scopus-WoS Q1-Q2',index=False)
         # รวมข้อมูลดิบจากทุกชีต/ทุกไฟล์ไว้ใน Sheet เดียว
         if raw_sheets:
             details=[]
@@ -198,7 +202,7 @@ def make_excel(data,raw_sheets):
                 detail.insert(0,'แหล่งข้อมูล',name)
                 base_col=find_col(detail,BASE)
                 if base_col:
-                    detail['Q ที่ใช้ในการนับ']=detail[base_col].map(norm_q)
+                    detail['Q ที่ใช้ในการนับ']=detail.apply(lambda row: norm_q(row[base_col], ' '.join(clean(v) for v in row.tolist())), axis=1)
                     detail['สถานะการนับ Q1-Q2']=detail['Q ที่ใช้ในการนับ'].map(
                         lambda q: f'นับเป็น {q}' if q in ('Q1','Q2') else 'ไม่นับ'
                     )
@@ -273,7 +277,7 @@ def make_excel(data,raw_sheets):
                 else:fill='FCE4D6';indent=0
                 for c in range(1,8):ws.cell(row,c).fill=PatternFill('solid',fgColor=fill);ws.cell(row,c).border=all_border
                 ws.cell(row,2).alignment=Alignment(horizontal='left',vertical='center',indent=indent)
-        elif ws.title=='สรุป Scopus Q1-Q2':
+        elif ws.title=='สรุป Scopus และ Web of Science Q1-Q2':
             # ตกแต่งตารางสรุป Scopus Q1-Q2
             ws.freeze_panes='A2'
             all_border=Border(left=thin,right=thin,top=thin,bottom=thin)
