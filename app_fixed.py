@@ -41,7 +41,7 @@ def norm_system(v):
     if any(x in s for x in ['นอกเวลาราชการ','นอกเวลา','parttime','part-time']):return 'นอกเวลา'
     if any(x in s for x in ['ในเวลาราชการ','ในเวลา','fulltime','full-time']):return 'ในเวลา'
     return ''
-def prepare_sheet(df,sheet_name):
+def prepare_sheet(df,sheet_name,file_name=''):
     out=df.copy();out.columns=[clean(c) for c in out.columns]
     level_col=find_col(out,LEVEL);base_col=find_col(out,BASE);title_col=find_col(out,PUB_TITLE);doi_col=find_col(out,DOI_COL);group_col=find_col(out,GROUP);faculty_col=find_col(out,FACULTY);program_total_col=find_col(out,PROGRAM_TOTAL);program_col=find_col(out,PROGRAM);system_col=find_col(out,SYSTEM);student_col=find_col(out,STUDENT)
     required=[]
@@ -49,7 +49,7 @@ def prepare_sheet(df,sheet_name):
     if not group_col:required.append('กลุ่มสาขา')
     if not system_col:required.append('ระบบ')
     if required:raise ValueError(f"Sheet '{sheet_name}' ไม่พบคอลัมน์: {', '.join(required)}")
-    forced=level_from_sheet(sheet_name)
+    forced=level_from_sheet(file_name) or level_from_sheet(sheet_name)
     level=pd.Series(forced,index=out.index) if forced else (out[level_col].map(norm_level) if level_col else pd.Series('',index=out.index))
     group=out[group_col].map(clean).replace('',pd.NA).ffill().fillna('')
     if faculty_col:
@@ -96,14 +96,14 @@ def prepare_sheet(df,sheet_name):
     out['__ผลงาน_key']=['doi:'+d if d else ('title:'+t if t else 'row:'+f) for d,t,f in zip(doi,title,fallback)]
     return out[out['__ระดับ'].isin(['ปริญญาโท','ปริญญาเอก'])].copy()
 @st.cache_data(show_spinner=False)
-def read_excel(file_bytes):
+def read_excel(file_bytes,file_name=''):
     # อ่าน workbook จาก bytes เพียงครั้งเดียว แล้วใช้ DataFrame ชุดเดิมทั้งการคำนวณและ export
     sheets=pd.read_excel(io.BytesIO(file_bytes),sheet_name=None,header=1)
     frames=[];used=[];raw_sheets={};errors=[]
     for name,df in sheets.items():
         if df is None or df.empty:continue
         try:
-            p=prepare_sheet(df,name)
+            p=prepare_sheet(df,name,file_name)
             if not p.empty:frames.append(p);used.append(name);raw_sheets[name]=df.copy()
         except ValueError as e:errors.append(str(e))
     if not frames:raise ValueError('ไม่พบ Sheet ข้อมูลปริญญาโท/ปริญญาเอกที่ใช้งานได้'+(f": {'; '.join(errors[:3])}" if errors else ''))
@@ -301,7 +301,7 @@ if run_clicked:
             file_success = []
             for uploaded in files:
                 try:
-                    used, data_part, raw = read_excel(uploaded.getvalue())
+                    used, data_part, raw = read_excel(uploaded.getvalue(), uploaded.name)
                     all_frames.append(data_part)
                     file_success.append(f"{uploaded.name}: {', '.join(used)}")
                     # ตั้งชื่อ Sheet ให้แยกกัน แม้หลายไฟล์จะมีชื่อ Sheet ซ้ำกัน
