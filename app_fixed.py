@@ -33,11 +33,12 @@ def norm_q(v, context=''):
     s=clean(v).upper()
     ctx=clean(context).upper()
     database=r'(?:SCOPUS|WEB\s*OF\s*SCIENCE|WOS|ISI\s*WEB\s*OF\s*SCIENCE|WEB\s*OF\s*SCIENCE\s*CORE\s*COLLECTION)'
-    if not re.search(database,s):
+    # ค้นหาชื่อฐานข้อมูลจากทั้งช่องฐานข้อมูลและทุกคอลัมน์ในแถว
+    combined=s+' '+ctx
+    if not re.search(database,combined):
         return ''
-    # รองรับรูปแบบ Web of Science - Q1, Web of Science (Q1), WOS Q2,
-    # รวมถึงกรณีฐานข้อมูลกับ quartile อยู่คนละคอลัมน์ในแถวเดียวกัน
-    matches=re.findall(r'(?<![A-Z0-9])Q\s*([12])(?![0-9])',s+' '+ctx)
+    # รองรับฐานข้อมูลและ Q1/Q2 ที่อยู่คนละคอลัมน์ รวมถึงชื่อเต็ม/ตัวย่อของ WoS
+    matches=re.findall(r'(?<![A-Z0-9])Q\s*([12])(?![0-9])',combined)
     if not matches:return ''
     return 'Q'+matches[0]
 def norm_system(v):
@@ -278,7 +279,7 @@ def make_excel(data,raw_sheets):
                 for c in range(1,8):ws.cell(row,c).fill=PatternFill('solid',fgColor=fill);ws.cell(row,c).border=all_border
                 ws.cell(row,2).alignment=Alignment(horizontal='left',vertical='center',indent=indent)
         elif ws.title=='สรุป Scopus และ Web of Science Q1-Q2':
-            # ตกแต่งตารางสรุป Scopus Q1-Q2
+            # ตกแต่งตารางสรุป Scopus และ Web of Science Q1-Q2
             ws.freeze_panes='A2'
             all_border=Border(left=thin,right=thin,top=thin,bottom=thin)
             for cell in ws[1]:
@@ -367,7 +368,7 @@ if run_clicked:
                 qmask = data['__Q'].isin(['Q1','Q2'])
                 duplicate_q = qmask & data.loc[qmask, '__ผลงาน_key'].duplicated(keep='first').reindex(data.index, fill_value=False)
                 data.loc[duplicate_q, '__Q_นับ'] = ''
-                st.info(f"พบผลงาน Scopus Q1-Q2 ที่ไม่ซ้ำ {data.loc[qmask, '__ผลงาน_key'].nunique():,} รายการ จากข้อมูลที่เข้าเกณฑ์ {int(qmask.sum()):,} แถว")
+                st.info(f"พบผลงาน Scopus และ Web of Science Q1-Q2 ที่ไม่ซ้ำ {data.loc[qmask, '__ผลงาน_key'].nunique():,} รายการ จากข้อมูลที่เข้าเกณฑ์ {int(qmask.sum()):,} แถว")
                 st.success(f'อ่านข้อมูลสำเร็จ {len(file_success)} จาก {len(files)} ไฟล์')
                 with st.expander('รายละเอียดไฟล์ที่อ่านสำเร็จ'):
                     for msg in file_success:
