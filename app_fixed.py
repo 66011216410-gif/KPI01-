@@ -97,16 +97,39 @@ def prepare_sheet(df,sheet_name,file_name=''):
     return out[out['__ระดับ'].isin(['ปริญญาโท','ปริญญาเอก'])].copy()
 @st.cache_data(show_spinner=False)
 def read_excel(file_bytes,file_name=''):
-    # อ่าน workbook จาก bytes เพียงครั้งเดียว แล้วใช้ DataFrame ชุดเดิมทั้งการคำนวณและ export
-    sheets=pd.read_excel(io.BytesIO(file_bytes),sheet_name=None,header=1)
+    # อ่าน workbook ทุกชีตจาก bytes ครั้งเดียว แล้วค้นหาแถวหัวตารางของแต่ละชีต
+    sheets=pd.read_excel(io.BytesIO(file_bytes),sheet_name=None,header=None)
     frames=[];used=[];raw_sheets={};errors=[]
-    for name,df in sheets.items():
-        if df is None or df.empty:continue
+    for name,raw_df in sheets.items():
+        if raw_df is None or raw_df.empty:continue
         try:
+            header_idx=None
+            # รองรับหัวตารางที่อยู่คนละแถวกันในแต่ละชีต (ค้นหา 15 แถวแรก)
+            for idx in range(min(15,len(raw_df))):
+                headers=[clean(v) for v in raw_df.iloc[idx].tolist()]
+                probe=pd.DataFrame(columns=headers)
+                if find_col(probe,BASE) and find_col(probe,GROUP) and find_col(probe,SYSTEM):
+                    header_idx=idx
+                    break
+            if header_idx is None:
+                errors.append(f"Sheet '{name}' ไม่พบแถวหัวตารางที่มีคอลัมน์ ฐานข้อมูล, กลุ่มสาขา และ ระบบ")
+                continue
+            headers=[clean(v) for v in raw_df.iloc[header_idx].tolist()]
+            df=raw_df.iloc[header_idx+1:].copy()
+            df.columns=headers
+            # ตัดคอลัมน์ที่ไม่มีชื่อออก เพื่อไม่ให้เกิดคอลัมน์ว่างจาก Excel
+            df=df.loc[:,[c for c in df.columns if c and not str(c).startswith('Unnamed:')]]
             p=prepare_sheet(df,name,file_name)
-            if not p.empty:frames.append(p);used.append(name);raw_sheets[name]=df.copy()
-        except ValueError as e:errors.append(str(e))
-    if not frames:raise ValueError('ไม่พบ Sheet ข้อมูลปริญญาโท/ปริญญาเอกที่ใช้งานได้'+(f": {'; '.join(errors[:3])}" if errors else ''))
+            if not p.empty:
+                frames.append(p)
+                used.append(name)
+                raw_sheets[name]=df.copy()
+            else:
+                errors.append(f"Sheet '{name}' ไม่มีแถวข้อมูลระดับปริญญาโท/ปริญญาเอกที่ใช้งานได้")
+        except ValueError as e:
+            errors.append(str(e))
+    if not frames:
+        raise ValueError('ไม่พบ Sheet ข้อมูลปริญญาโท/ปริญญาเอกที่ใช้งานได้'+(f": {'; '.join(errors[:5])}" if errors else ''))
     return used,pd.concat(frames,ignore_index=True),raw_sheets
 def count_system(df,kind):
     x=df[df['__ระบบ']==kind]
