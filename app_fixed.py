@@ -444,8 +444,12 @@ if run_clicked:
                         use_container_width=True,
                         hide_index=True
                     )
-                st.subheader('สรุป Scopus Q1-Q2')
-                st.dataframe(q_summary(data), use_container_width=True, hide_index=True)
+                    st.subheader(f'สรุป KPI 1.2.4 ระดับ{level}')
+                    st.dataframe(
+                        q_summary(data, level),
+                        use_container_width=True,
+                        hide_index=True
+                    )
                 st.download_button(
                     'ดาวน์โหลด Excel สถิติผลงานตีพิมพ์',
                     data=make_excel(data, all_raw).getvalue(),
