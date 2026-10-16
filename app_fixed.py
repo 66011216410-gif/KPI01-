@@ -103,37 +103,59 @@ def prepare_sheet(df,sheet_name,file_name=''):
     return out[out['__ระดับ'].isin(['ปริญญาโท','ปริญญาเอก'])].copy()
 @st.cache_data(show_spinner=False)
 def read_excel(file_bytes,file_name=''):
-    # อ่าน workbook ทุกชีตจาก bytes ครั้งเดียว แล้วค้นหาแถวหัวตารางของแต่ละชีต
-    sheets=pd.read_excel(io.BytesIO(file_bytes),sheet_name=None,header=None)
+    # อ่านด้วย openpyxl เพื่อขยายค่าใน merged cells ก่อนแปลงเป็นตาราง
+    wb=load_workbook(io.BytesIO(file_bytes),read_only=False,data_only=True)
     frames=[];used=[];raw_sheets={};errors=[]
-    for name,raw_df in sheets.items():
-        if raw_df is None or raw_df.empty:continue
+    for ws in wb.worksheets:
+        name=ws.title
         try:
-            header_idx=None
-            # รองรับหัวตารางที่อยู่คนละแถวกันในแต่ละชีต (ค้นหา 15 แถวแรก)
-            for idx in range(min(15,len(raw_df))):
-                headers=[clean(v) for v in raw_df.iloc[idx].tolist()]
-                probe=pd.DataFrame(columns=headers)
+            # ทำสำเนาค่าทุกช่อง และเติมค่าของเซลล์มุมซ้ายบนลงในช่องที่ถูกรวม (merged)
+            values=[list(row) for row in ws.iter_rows(values_only=True)]
+            for merged in ws.merged_cells.ranges:
+                min_col,min_row,max_col,max_row=merged.bounds
+                value=values[min_row-1][min_col-1]
+                for rr in range(min_row-1,max_row):
+                    for cc in range(min_col-1,max_col):
+                        values[rr][cc]=value
+            raw_df=pd.DataFrame(values)
+            if raw_df.empty:continue
+            header_idx=None;headers=None
+            # ตรวจหัวตารางได้ทั้งหัวตารางปกติและหัวตารางหลายชั้น/คอลัมน์ซ้อน
+            for idx in range(min(20,len(raw_df))):
+                candidates=[]
+                for cc in range(raw_df.shape[1]):
+                    parts=[]
+                    # รวมชื่อหัวตารางย้อนหลังได้ไม่เกิน 3 แถว เช่น ฐานข้อมูล > Web of Science > Q1
+                    for rr in range(max(0,idx-2),idx+1):
+                        val=clean(raw_df.iat[rr,cc])
+                        if val and (not parts or val!=parts[-1]):
+                            parts.append(val)
+                    candidates.append(' | '.join(parts))
+                probe=pd.DataFrame(columns=candidates)
                 if find_col(probe,BASE) and find_col(probe,GROUP) and find_col(probe,SYSTEM):
-                    header_idx=idx
+                    header_idx=idx;headers=candidates
                     break
             if header_idx is None:
-                errors.append(f"Sheet '{name}' ไม่พบแถวหัวตารางที่มีคอลัมน์ ฐานข้อมูล, กลุ่มสาขา และ ระบบ")
+                errors.append(f"Sheet '{name}' ไม่พบหัวตาราง (รวมถึงหัวตารางแบบ merged/หลายชั้น) ที่มีคอลัมน์ ฐานข้อมูล, กลุ่มสาขา และ ระบบ")
                 continue
-            headers=[clean(v) for v in raw_df.iloc[header_idx].tolist()]
+            # ตั้งชื่อคอลัมน์ให้ไม่ซ้ำ แม้ไฟล์มีชื่อหัวคอลัมน์ซ้ำจากการ merge
+            unique_headers=[];seen={}
+            for i,h in enumerate(headers):
+                h=clean(h)
+                if not h or h.lower().startswith('unnamed:'):h=f'คอลัมน์_{i+1}'
+                seen[h]=seen.get(h,0)+1
+                unique_headers.append(h if seen[h]==1 else f'{h}_{seen[h]}')
             df=raw_df.iloc[header_idx+1:].copy()
-            df.columns=headers
-            # ตัดคอลัมน์ที่ไม่มีชื่อออก เพื่อไม่ให้เกิดคอลัมน์ว่างจาก Excel
-            df=df.loc[:,[c for c in df.columns if c and not str(c).startswith('Unnamed:')]]
+            df.columns=unique_headers
+            df=df.loc[:,[c for c in df.columns if c and not str(c).startswith('คอลัมน์_')]]
             p=prepare_sheet(df,name,file_name)
             if not p.empty:
-                frames.append(p)
-                used.append(name)
-                raw_sheets[name]=df.copy()
+                frames.append(p);used.append(name);raw_sheets[name]=df.copy()
             else:
                 errors.append(f"Sheet '{name}' ไม่มีแถวข้อมูลระดับปริญญาโท/ปริญญาเอกที่ใช้งานได้")
         except ValueError as e:
             errors.append(str(e))
+    wb.close()
     if not frames:
         raise ValueError('ไม่พบ Sheet ข้อมูลปริญญาโท/ปริญญาเอกที่ใช้งานได้'+(f": {'; '.join(errors[:5])}" if errors else ''))
     return used,pd.concat(frames,ignore_index=True),raw_sheets
