@@ -202,40 +202,11 @@ def hierarchy(data):
             for p in programs_for_faculty(g,f,[]):add_program(g,f,p)
     rows.append(['','รวมทั้งหมด',*metrics(data)]);return pd.DataFrame(rows,columns=cols)
 def q_summary(data):
-    # สรุป KPI 1.2.4 แยกฐานข้อมูลและ Quartile ตามรูปแบบ 10 คอลัมน์ที่กำหนด
-    q_col=data.get('__Q_นับ',data['__Q'])
-    work_key='__ผลงาน_key'
-    def count(level, database, q):
-        subset=data[(data['__ระดับ']==level)&(q_col==q)].copy()
-        db_pattern = r'WEB\s*OF\s*SCIENCE|WOS|ISI\s*WEB\s*OF\s*SCIENCE' if database=='WoS' else r'SCOPUS'
-        mask=subset.apply(lambda row: bool(re.search(db_pattern, ' '.join(clean(v).upper() for v in row.tolist()))),axis=1)
-        subset=subset[mask]
-        return int(subset[work_key].nunique()) if work_key in subset.columns else int(len(subset))
-    values=[
-        count('ปริญญาเอก','Scopus','Q1'),
-        count('ปริญญาเอก','Scopus','Q2'),
-        count('ปริญญาเอก','WoS','Q1'),
-        count('ปริญญาเอก','WoS','Q2'),
-    ]
-    total=sum(values)
-    # ร้อยละเป็นสัดส่วนของแต่ละกลุ่มต่อผลงาน Q1-Q2 ระดับปริญญาเอกทั้งหมด
-    percents=[round(v/total*100,2) if total else 0 for v in values]
-    return pd.DataFrame([[
-        values[0],percents[0],values[1],percents[1],
-        values[2],percents[2],values[3],percents[3],
-        total,100.0 if total else 0
-    ]],columns=[
-        'จำนวนผลงานตีพิมพ์ในวารสารระดับนานาชาติ SCOPUS Q1',
-        'ร้อยละผลงานวิจัยนิสิตระดับปริญญาเอกได้รับการตีพิมพ์เผยแพร่ใน SCOPUS Q1',
-        'จำนวนผลงานตีพิมพ์ในวารสารระดับนานาชาติ SCOPUS Q2',
-        'ร้อยละผลงานวิจัยนิสิตระดับปริญญาเอกได้รับการตีพิมพ์เผยแพร่ใน SCOPUS Q2',
-        'จำนวนผลงานตีพิมพ์ในวารสารระดับนานาชาติ Web of Science Q1',
-        'ร้อยละผลงานวิจัยนิสิตระดับปริญญาเอกได้รับการตีพิมพ์เผยแพร่ใน Web of Science Q1',
-        'จำนวนผลงานตีพิมพ์ในวารสารระดับนานาชาติ Web of Science Q2',
-        'ร้อยละผลงานวิจัยนิสิตระดับปริญญาเอกได้รับการตีพิมพ์เผยแพร่ใน Web of Science Q2',
-        'รวมจำนวนผลงานตีพิมพ์ในวารสารระดับนานาชาติ Q1-Q2',
-        'ร้อยละผลงานวิจัยรวมจำนวนผลงานตีพิมพ์ในวารสารระดับนานาชาติ Q1-Q2'
-    ])
+    def vals(level):
+        q_col=data.get('__Q_นับ',data['__Q'])
+        x=data[(data['__ระดับ']==level)&q_col.isin(['Q1','Q2'])].drop_duplicates('__ผลงาน_key')
+        q1=int((x['__Q']=='Q1').sum());q2=int((x['__Q']=='Q2').sum());return q1,q2,q1+q2
+    m,d=vals('ปริญญาโท'),vals('ปริญญาเอก');return pd.DataFrame([['ระดับปริญญาโท',*m],['ระดับปริญญาเอก',*d],['รวม',m[0]+d[0],m[1]+d[1],m[2]+d[2]]],columns=['','Scopus/WoS Q1','Scopus/WoS Q2','รวม'])
 def safe_sheet_name(name,used):
     base='ข้อมูล_'+clean(name)[:25];base=re.sub(r'[\\/*?:\[\]]','_',base) or 'ข้อมูล';candidate=base;i=2
     while candidate in used:candidate=f'{base[:28-len(str(i))]}_{i}';i+=1
@@ -332,50 +303,8 @@ def make_excel(data,raw_sheets):
                 else:fill='FCE4D6';indent=0
                 for c in range(1,8):ws.cell(row,c).fill=PatternFill('solid',fgColor=fill);ws.cell(row,c).border=all_border
                 ws.cell(row,2).alignment=Alignment(horizontal='left',vertical='center',indent=indent)
-        elif ws.title=='สรุป Scopus-WoS Q1-Q2':
-            # ตกแต่งตาราง KPI 1.2.4 แบบ 10 คอลัมน์
-            ws.insert_rows(1,3)
-            ws.merge_cells(start_row=1,start_column=1,end_row=1,end_column=10)
-            ws['A1']='1.2.4 จำนวนผลงานระดับบัณฑิตศึกษาที่สามารถตีพิมพ์ในระดับนานาชาติ SCOPUS Q1-Q2'
-            ws['A1'].font=Font(bold=True,color='FFFFFF',size=14)
-            ws['A1'].fill=PatternFill('solid',fgColor='2F5D20')
-            ws['A1'].alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
-            ws.row_dimensions[1].height=34
-            ws.merge_cells('A2:A3'); ws.merge_cells('B2:B3')
-            ws.merge_cells('C2:C3'); ws.merge_cells('D2:D3')
-            ws.merge_cells('E2:E3'); ws.merge_cells('F2:F3')
-            ws.merge_cells('G2:G3'); ws.merge_cells('H2:H3')
-            ws.merge_cells('I2:I3'); ws.merge_cells('J2:J3')
-            for col in range(1,11):
-                cell=ws.cell(2,col)
-                cell.value=ws.cell(4,col).value
-                cell.fill=PatternFill('solid',fgColor='2F5D20')
-                cell.font=Font(bold=True,color='FFFFFF')
-                cell.alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
-                cell.border=all_border
-                ws.cell(3,col).fill=PatternFill('solid',fgColor='568B3B')
-                ws.cell(3,col).border=all_border
-            ws.row_dimensions[2].height=100
-            ws.row_dimensions[3].height=35
-            for col in range(1,11):
-                ws.column_dimensions[chr(64+col)].width=25
-            ws.freeze_panes='A5'
-            for row in ws.iter_rows(min_row=4,max_row=ws.max_row,min_col=1,max_col=10):
-                for cell in row:
-                    cell.border=all_border
-                    cell.alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
-                    if cell.data_type=='n' and cell.column in [2,4,6,8,10]:
-                        cell.number_format='0.00"%"'
-            ws.column_dimensions['A'].width=30
-            ws.column_dimensions['B'].width=32
-            ws.column_dimensions['C'].width=30
-            ws.column_dimensions['D'].width=32
-            ws.column_dimensions['E'].width=30
-            ws.column_dimensions['F'].width=32
-            ws.column_dimensions['G'].width=30
-            ws.column_dimensions['H'].width=32
-            ws.column_dimensions['I'].width=28
-            ws.column_dimensions['J'].width=30
+        elif ws.title=='สรุป Scopus และ Web of Science Q1-Q2':
+            # ตกแต่งตารางสรุป Scopus และ Web of Science Q1-Q2
             ws.freeze_panes='A2'
             all_border=Border(left=thin,right=thin,top=thin,bottom=thin)
             for cell in ws[1]:
