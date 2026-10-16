@@ -248,7 +248,7 @@ def make_excel(data,raw_sheets):
             h=hierarchy(level_data)
             h.to_excel(w,sheet_name=level,index=False,startrow=3)
             # เพิ่มตาราง KPI 1.2.4 ต่อท้ายในชีตของระดับนั้น ไม่สร้างชีตรวมแยก
-            q_summary(data,level).to_excel(w,sheet_name=level,index=False,startrow=5+len(h))
+            q_summary(data,level).to_excel(w,sheet_name=level,index=False,startrow=5+len(h),startcol=8)
         # รวมข้อมูลดิบจากทุกชีต/ทุกไฟล์ไว้ใน Sheet เดียว
         if raw_sheets:
             details=[]
@@ -342,14 +342,14 @@ def make_excel(data,raw_sheets):
             title_row=5+len(h)
             header_row=6+len(h)
             data_row=header_row+1
-            ws.merge_cells(start_row=title_row,start_column=1,end_row=title_row,end_column=10)
-            title_cell=ws.cell(title_row,1)
+            ws.merge_cells(start_row=title_row,start_column=9,end_row=title_row,end_column=18)
+            title_cell=ws.cell(title_row,9)
             title_cell.value='1.2.4 จำนวนผลงานระดับบัณฑิตศึกษาที่สามารถตีพิมพ์ในระดับนานาชาติ SCOPUS และ Web of Science Q1-Q2'
             title_cell.font=Font(bold=True,color='FFFFFF',size=14)
             title_cell.fill=PatternFill('solid',fgColor='2F5D20')
             title_cell.alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
             ws.row_dimensions[title_row].height=34
-            for col in range(1,11):
+            for col in range(9,19):
                 header=ws.cell(header_row,col)
                 header.fill=PatternFill('solid',fgColor='2F5D20')
                 header.font=Font(bold=True,color='FFFFFF')
@@ -358,11 +358,11 @@ def make_excel(data,raw_sheets):
                 value_cell=ws.cell(data_row,col)
                 value_cell.border=all_border
                 value_cell.alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
-                if col in [2,4,6,8,10]:
+                if col in [10,12,14,16,18]:
                     value_cell.number_format='0.00"%"'
             ws.row_dimensions[header_row].height=100
             ws.row_dimensions[data_row].height=32
-            for col,width in enumerate([30,32,30,32,30,32,30,32,28,30],start=1):
+            for col,width in enumerate([30,32,30,32,30,32,30,32,28,30],start=9):
                 ws.column_dimensions[chr(64+col)].width=width
     out=io.BytesIO();wb.save(out);out.seek(0);return out
 
