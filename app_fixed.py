@@ -91,6 +91,12 @@ def prepare_sheet(df,sheet_name,file_name=''):
     out['__ระดับ']=level;out['__กลุ่ม']=canonical;out['__คณะ']=faculty.map(clean);out['__สาขา']=program.map(clean)
     # ใช้ข้อมูลเดิมในคอลัมน์ฐานข้อมูลเป็นแหล่งตัดสิน Q1/Q2 โดยไม่แก้ค่าคอลัมน์ต้นฉบับ
     out['__Q']=out[base_col].map(lambda v: norm_q(v))
+    def database_type(v):
+        z=clean(v).upper()
+        if re.search(r'WEB\\s*OF\\s*SCIENCE|\\bWOS\\b|ISI\\s*WEB',z): return 'WOS'
+        if 'SCOPUS' in z: return 'SCOPUS'
+        return ''
+    out['__ฐานข้อมูลประเภท']=out[base_col].map(database_type)
     out['__ระบบ']=out[system_col].map(norm_system);out['__รหัส']=out[student_col].map(clean) if student_col else '';out['__ลำดับ']=range(len(out))
     # สร้างรหัสผลงานเพื่อป้องกันการนับรายการเดียวซ้ำข้ามแถว/ชีต/ไฟล์
     def key_text(v):return re.sub(r'\s+',' ',clean(v)).strip().casefold()
@@ -173,11 +179,17 @@ def count_system(df,kind):
 def metrics(df):
     inn=count_system(df,'ในเวลา');out=count_system(df,'นอกเวลา');a=inn+out
     q_col=df.get('__Q_นับ',df['__Q'])
-    pub=int(df.loc[q_col.isin(['Q1','Q2']),'__ผลงาน_key'].nunique())
-    return inn,out,a,pub,round(pub*100/a,2) if a else 0
+    db_col=df.get('__ฐานข้อมูลประเภท',pd.Series('',index=df.index))
+    def n(db,q):
+        mask=db_col.eq(db)&q_col.eq(q)
+        return int(df.loc[mask,'__ผลงาน_key'].nunique())
+    sq1,sq2,wq1,wq2=n('SCOPUS','Q1'),n('SCOPUS','Q2'),n('WOS','Q1'),n('WOS','Q2')
+    total=sq1+sq2+wq1+wq2
+    pct=lambda x: round(x*100/a,2) if a else 0
+    return inn,out,a,sq1,pct(sq1),sq2,pct(sq2),wq1,pct(wq1),wq2,pct(wq2),total,pct(total)
 ORDER_TREE=[('กลุ่มมนุษยศาสตร์และสังคมศาสตร์',[('การเมืองการปกครอง',['รัฐศาสตร์']),('การท่องเที่ยวและการโรงแรม',['การจัดการการท่องเที่ยวและการโรงแรม']),('การบัญชีและการจัดการ',['การจัดการสมัยใหม่','การจัดการสมาร์ตซิตี้และนวัตกรรมดิจิทัล','การบัญชี','บริหารธุรกิจและนวัตกรรมดิจิทัล']),('ดุริยางคศิลป์',['ดุริยางคศิลป์']),('มนุษยศาสตร์และสังคมศาสตร์',['การสอนภาษาอังกฤษ','ภาษาไทย','ศาสนาและภูมิปัญญาเพื่อการพัฒนา']),('ศิลปกรรมศาสตร์และวัฒนธรรมศาสตร์',['การวิจัยและสร้างสรรค์ศิลปกรรมศาสตร์','วัฒนธรรมศาสตร์']),('ศึกษาศาสตร์',['เทคโนโลยีและสื่อสารการศึกษา','การบริหารและพัฒนาการศึกษา','วิจัยและประเมินผลการศึกษา','วิทยาศาสตร์การออกกำลังกายและการกีฬา','หลักสูตรและการสอน'])]),('กลุ่มวิทยาศาสตร์และเทคโนโลยี',[('เทคโนโลยี',['เกษตรศาสตร์','เทคโนโลยีการอาหาร']),('วิจัยวลัยรุกขเวช',['ความหลากหลายทางชีวภาพ']),('วิทยาการสารสนเทศ',['เทคโนโลยีสารสนเทศ','วิทยาการคอมพิวเตอร์','สื่อนฤมิต']),('วิทยาศาสตร์',['บรรพชีวินวิทยา','ฟิสิกส์']),('วิศวกรรมศาสตร์',['วิศวกรรมเครื่องกล','วิศวกรรมโยธา','วิศวกรรมไฟฟ้าและคอมพิวเตอร์']),('สิ่งแวดล้อมและทรัพยากรศาสตร์',['การจัดการสิ่งแวดล้อมอย่างยั่งยืน'])]),('กลุ่มวิทยาศาสตร์สุขภาพ',[('เภสัชศาสตร์',['เภสัชศาสตร์']),('แพทยศาสตร์',['วิทยาศาสตร์สุขภาพ']),('สาธารณสุขศาสตร์',['เทคโนโลยีทางสุขภาพและความปลอดภัย','สาธารณสุขศาสตรดุษฎีบัณฑิต'])])]
 def hierarchy(data):
-    cols=['ลำดับ','กลุ่ม/คณะ/สาขา','ระบบในเวลาราชการ','ระบบนอกเวลาราชการ','จำนวนผู้สำเร็จการศึกษา (A)','รวมจำนวนผลงานตีพิมพ์ระดับนานาชาติ Q1-Q2','ร้อยละ'];rows=[];seen_g=set();seen_f=set();seen_p=set();n=1
+    cols=['ลำดับ','กลุ่ม/คณะ/สาขา','ระบบในเวลาราชการ','ระบบนอกเวลาราชการ','จำนวนผู้สำเร็จการศึกษา (A)','SCOPUS Q1 จำนวน','SCOPUS Q1 ร้อยละ','SCOPUS Q2 จำนวน','SCOPUS Q2 ร้อยละ','Web of Science Q1 จำนวน','Web of Science Q1 ร้อยละ','Web of Science Q2 จำนวน','Web of Science Q2 ร้อยละ','รวมผลงาน Q1-Q2','ร้อยละรวม Q1-Q2'];rows=[];seen_g=set();seen_f=set();seen_p=set();n=1
     def add_group(g):
         nonlocal n
         if not g or g in seen_g:return
@@ -251,87 +263,62 @@ def make_excel(data,raw_sheets):
     bio.seek(0);wb=load_workbook(bio);thin=Side(style='thin',color='000000')
     for ws in wb.worksheets:
         if ws.title in ['ปริญญาโท','ปริญญาเอก']:
-            # หัวตาราง 3 ชั้น
             ws.insert_rows(1,3)
-            # ลบแถวว่าง 4-6 แล้วเลื่อนข้อมูลขึ้นมาให้เริ่มที่แถว 4
-            ws.delete_rows(4,3)
-            # ลบแถวที่ 4 หากเป็นหัวตารางซ้ำจากข้อมูลที่เขียนโดย pandas
-            header_values = [ws.cell(4,c).value for c in range(1,8)]
-            expected_headers = ['ลำดับ','กลุ่ม/คณะ/สาขา','ระบบในเวลาราชการ','ระบบนอกเวลาราชการ','จำนวนผู้สำเร็จการศึกษา (A)','รวมจำนวนผลงานตีพิมพ์ระดับนานาชาติ Q1-Q2','ร้อยละ']
-            if header_values == expected_headers:
-                ws.delete_rows(4,1)
-            ws.merge_cells('A1:G1')
+            ws.merge_cells('A1:O1')
             ws['A1']=PAGE_TITLE+' ระดับ'+ws.title
             ws['A1'].font=Font(bold=True,color='FFFFFF',size=16)
             ws['A1'].fill=PatternFill('solid',fgColor='2F5D20')
             ws['A1'].alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
-            ws.row_dimensions[1].height=28
-
-            # แถวหัวตารางหลัก
-            ws.merge_cells('A2:A3')
-            ws.merge_cells('B2:B3')
-            ws.merge_cells('C2:D2')
-            ws.merge_cells('E2:E3')
-            ws.merge_cells('F2:G2')
-
-            ws['A2']='ลำดับ'
-            ws['B2']='กลุ่ม/คณะ/สาขา'
-            ws['C2']='ระบบ'
-            ws['E2']='จำนวนผู้สำเร็จ\nการศึกษา (A)'
-            ws['F2']='1.2.4 จำนวนผลงานระดับบัณฑิตศึกษาที่\nสามารถตีพิมพ์ในฐานข้อมูลนานาชาติ SCOPUS\nQ1-Q2'
-
-            # แถวหัวตารางย่อย
-            ws['C3']='ระบบในเวลา\nราชการ'
-            ws['D3']='ระบบนอกเวลา\nราชการ'
-            ws['F3']='รวมจำนวนผลงานตีพิมพ์\nระดับนานาชาติ Q1-Q2'
-            ws['G3']='ร้อยละ'
-
-            # เติมสีและจัดรูปแบบหัวตาราง
+            ws.row_dimensions[1].height=36
+            # หัวตารางหลายชั้น 15 คอลัมน์
+            ws.merge_cells('A2:A3'); ws.merge_cells('B2:B3')
+            ws.merge_cells('C2:D2'); ws.merge_cells('E2:E3')
+            ws.merge_cells('F2:G2'); ws.merge_cells('H2:I2')
+            ws.merge_cells('J2:K2'); ws.merge_cells('L2:M2')
+            ws.merge_cells('N2:O2')
+            labels={ 'A2':'ลำดับ','B2':'กลุ่ม/คณะ/สาขา','C2':'ระบบ','E2':'จำนวนผู้สำเร็จการศึกษา (A)',
+                'F2':'จำนวนผลงานตีพิมพ์ในวารสารระดับนานาชาติ SCOPUS Q1',
+                'H2':'จำนวนผลงานตีพิมพ์ในวารสารระดับนานาชาติ SCOPUS Q2',
+                'J2':'จำนวนผลงานตีพิมพ์ในวารสารระดับนานาชาติ Web of Science Q1',
+                'L2':'จำนวนผลงานตีพิมพ์ในวารสารระดับนานาชาติ Web of Science Q2',
+                'N2':'รวมจำนวนผลงานตีพิมพ์ในวารสารระดับนานาชาติ Q1-Q2'}
+            for cell,value in labels.items(): ws[cell]=value
+            ws['C3']='ระบบในเวลาราชการ';ws['D3']='ระบบนอกเวลาราชการ'
+            for c in ['F','H','J','L']: ws[f'{c}3']='จำนวน';ws[f'{chr(ord(c)+1)}3']='ร้อยละ'
+            ws['N3']='จำนวน';ws['O3']='ร้อยละ'
             all_border=Border(left=thin,right=thin,top=thin,bottom=thin)
             for row in range(2,4):
-                for c in range(1,8):
-                    ws.cell(row,c).fill=PatternFill('solid',fgColor='2F5D20' if row == 2 else '568B3B')
-                    ws.cell(row,c).font=Font(bold=True,color='FFFFFF')
-                    ws.cell(row,c).alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
-                    ws.cell(row,c).border=all_border
-
-            ws.row_dimensions[2].height=54
-            ws.row_dimensions[3].height=54
+                for c in range(1,16):
+                    cell=ws.cell(row,c)
+                    cell.fill=PatternFill('solid',fgColor='2F5D20' if row==2 else '568B3B')
+                    cell.font=Font(bold=True,color='FFFFFF')
+                    cell.alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
+                    cell.border=all_border
+            ws.row_dimensions[2].height=72;ws.row_dimensions[3].height=42
             ws.freeze_panes='A4'
-            ws.column_dimensions['A'].width=9
-            ws.column_dimensions['B'].width=48
-            for col in range(3,8):ws.column_dimensions[chr(64+col)].width=22
+            ws.column_dimensions['A'].width=9;ws.column_dimensions['B'].width=42
+            for col in range(3,16):ws.column_dimensions[chr(64+col)].width=18
             for row in range(4,ws.max_row+1):
                 label=str(ws.cell(row,2).value or '')
                 if label.startswith('        '):ws.cell(row,2).value=label.strip();indent=2;fill='FFFFFF'
                 elif label.startswith('    '):ws.cell(row,2).value=label.strip();indent=1;fill='E2F0D9'
                 elif label=='รวมทั้งหมด':fill='FCE4D6';indent=0
                 else:fill='FCE4D6';indent=0
-                for c in range(1,8):ws.cell(row,c).fill=PatternFill('solid',fgColor=fill);ws.cell(row,c).border=all_border
+                for c in range(1,16):ws.cell(row,c).fill=PatternFill('solid',fgColor=fill);ws.cell(row,c).border=all_border
                 ws.cell(row,2).alignment=Alignment(horizontal='left',vertical='center',indent=indent)
-        elif ws.title=='สรุป Scopus และ Web of Science Q1-Q2':
-            # ตกแต่งตารางสรุป Scopus และ Web of Science Q1-Q2
+        elif ws.title=='สรุป Scopus-WoS Q1-Q2':
             ws.freeze_panes='A2'
             all_border=Border(left=thin,right=thin,top=thin,bottom=thin)
             for cell in ws[1]:
-                cell.fill=PatternFill('solid',fgColor='2F5D20')
-                cell.font=Font(bold=True,color='FFFFFF')
-                cell.alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
-                cell.border=all_border
+                cell.fill=PatternFill('solid',fgColor='2F5D20');cell.font=Font(bold=True,color='FFFFFF')
+                cell.alignment=Alignment(horizontal='center',vertical='center',wrap_text=True);cell.border=all_border
             for row in ws.iter_rows(min_row=2,max_row=ws.max_row,min_col=1,max_col=4):
                 for cell in row:
-                    cell.border=all_border
-                    cell.alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
-                    if cell.row == ws.max_row:
-                        cell.fill=PatternFill('solid',fgColor='FCE4D6')
-                        cell.font=Font(bold=True)
-                    elif cell.column == 1:
-                        cell.fill=PatternFill('solid',fgColor='E2F0D9')
+                    cell.border=all_border;cell.alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
+                    if cell.row==ws.max_row:cell.fill=PatternFill('solid',fgColor='FCE4D6');cell.font=Font(bold=True)
+                    elif cell.column==1:cell.fill=PatternFill('solid',fgColor='E2F0D9')
             ws.row_dimensions[1].height=30
-            ws.column_dimensions['A'].width=24
-            ws.column_dimensions['B'].width=16
-            ws.column_dimensions['C'].width=16
-            ws.column_dimensions['D'].width=14
+            ws.column_dimensions['A'].width=24;ws.column_dimensions['B'].width=16;ws.column_dimensions['C'].width=16;ws.column_dimensions['D'].width=14
     out=io.BytesIO();wb.save(out);out.seek(0);return out
 
 st.title(PAGE_TITLE)
