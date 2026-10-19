@@ -7,7 +7,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 PAGE_TITLE='ฐานข้อมูลจำนวนผลงานระดับบัณฑิตศึกษาที่ตีพิมพ์ในระดับนานาชาติ Scopus และ Web of Science Q1, Q2'
 st.set_page_config(page_title=PAGE_TITLE, page_icon='📊', layout='wide')
-LEVEL=['ระดับ','ระดับการศึกษา','degree']; BASE=['ฐานข้อมูล','ฐานข้อมูล ']; PUB_TITLE=['ผลงานตีพิมพ์ที่ผ่านเกณฑ์ตามประกาศมหามหาสารคาม','ชื่อผลงานที่ตีพิมพ์','ชื่อผลงาน','ชื่อบทความ','ชื่อเรื่อง','ชื่อสิ่งพิมพ์','publication title','article title','title']; DOI_COL=['doi','digital object identifier']; GROUP=['กลุ่มสาขา']; FACULTY=['คณะ','faculty']; PROGRAM_TOTAL=['สาขารวม','สาขา รวม','program total']; PROGRAM=['สาขา','สาขาวิชา','หลักสูตร','program','major']; SYSTEM=['ระบบ']; STUDENT=['รหัสนิสิต','รหัสนักศึกษา','รหัส','student id']
+LEVEL=['ระดับ','ระดับการศึกษา','degree']; BASE=['ฐานข้อมูล','ฐานข้อมูล ']; Q_USED=['Q ที่ใช้ในการนับ']; Q_TIER=['ผลงานที่ตีพิมพ์ Q1-Q2','ผลงานที่ตีพิมพ์ Q1 Q2']; PUB_TITLE=['ผลงานตีพิมพ์ที่ผ่านเกณฑ์ตามประกาศมหามหาสารคาม','ชื่อผลงานที่ตีพิมพ์','ชื่อผลงาน','ชื่อบทความ','ชื่อเรื่อง','ชื่อสิ่งพิมพ์','publication title','article title','title']; DOI_COL=['doi','digital object identifier']; GROUP=['กลุ่มสาขา']; FACULTY=['คณะ','faculty']; PROGRAM_TOTAL=['สาขารวม','สาขา รวม','program total']; PROGRAM=['สาขา','สาขาวิชา','หลักสูตร','program','major']; SYSTEM=['ระบบ']; STUDENT=['รหัสนิสิต','รหัสนักศึกษา','รหัส','student id']
 
 def clean(v): return '' if pd.isna(v) else str(v).strip()
 def norm_col(v): return re.sub(r'\s+','',clean(v)).lower()
@@ -49,7 +49,7 @@ def norm_system(v):
     return ''
 def prepare_sheet(df,sheet_name,file_name=''):
     out=df.copy();out.columns=[clean(c) for c in out.columns]
-    level_col=find_col(out,LEVEL);base_col=find_col(out,BASE);title_col=find_col(out,PUB_TITLE);doi_col=find_col(out,DOI_COL);group_col=find_col(out,GROUP);faculty_col=find_col(out,FACULTY);program_total_col=find_col(out,PROGRAM_TOTAL);program_col=find_col(out,PROGRAM);system_col=find_col(out,SYSTEM);student_col=find_col(out,STUDENT)
+    level_col=find_col(out,LEVEL);base_col=find_col(out,BASE);q_used_col=find_col(out,Q_USED);q_tier_col=find_col(out,Q_TIER);title_col=find_col(out,PUB_TITLE);doi_col=find_col(out,DOI_COL);group_col=find_col(out,GROUP);faculty_col=find_col(out,FACULTY);program_total_col=find_col(out,PROGRAM_TOTAL);program_col=find_col(out,PROGRAM);system_col=find_col(out,SYSTEM);student_col=find_col(out,STUDENT)
     required=[]
     if not base_col:required.append('ฐานข้อมูล')
     if not group_col:required.append('กลุ่มสาขา')
@@ -88,7 +88,7 @@ def prepare_sheet(df,sheet_name,file_name=''):
         if f and f in faculty_group:g=faculty_group[f]
         elif p and p in program_group:g=program_group[p]
         canonical.append(g)
-    out['__ระดับ']=level;out['__กลุ่ม']=canonical;out['__คณะ']=faculty.map(clean);out['__สาขา']=program.map(clean);out['__Q']=out.apply(lambda row: norm_q(row[base_col], ' '.join(clean(v) for v in row.tolist())), axis=1);out['__ระบบ']=out[system_col].map(norm_system);out['__รหัส']=out[student_col].map(clean) if student_col else '';out['__ลำดับ']=range(len(out))
+    out['__ระดับ']=level;out['__กลุ่ม']=canonical;out['__คณะ']=faculty.map(clean);out['__สาขา']=program.map(clean);\n    # ใช้คอลัมน์ Q ที่ใช้ในการนับเป็นหลัก ไม่ดึง Q จากชื่อผลงานหรือคอลัมน์อื่น\n    def explicit_q(v):\n        m=re.search(r'(?<![A-Z0-9])Q\\s*([12])(?![0-9])',clean(v).upper())\n        return 'Q'+m.group(1) if m else ''\n    if q_used_col:\n        out['__Q']=out[q_used_col].map(explicit_q)\n    else:\n        out['__Q']=out.apply(lambda row: norm_q(row[base_col], clean(row[q_tier_col]) if q_tier_col else ''), axis=1)\n    out['__ระบบ']=out[system_col].map(norm_system);out['__รหัส']=out[student_col].map(clean) if student_col else '';out['__ลำดับ']=range(len(out))
     # สร้างรหัสผลงานเพื่อป้องกันการนับรายการเดียวซ้ำข้ามแถว/ชีต/ไฟล์
     def key_text(v):return re.sub(r'\s+',' ',clean(v)).strip().casefold()
     if doi_col:
@@ -230,14 +230,18 @@ def make_excel(data,raw_sheets):
                     detail=detail.rename(columns={'แหล่งข้อมูล':'แหล่งข้อมูลเดิม'})
                 detail.insert(0,'แหล่งข้อมูล',name)
                 base_col=find_col(detail,BASE)
-                if base_col:
-                    detail['Q ที่ใช้ในการนับ']=detail.apply(lambda row: norm_q(row[base_col], ' '.join(clean(v) for v in row.tolist())), axis=1)
-                    detail['สถานะการนับ Q1-Q2']=detail['Q ที่ใช้ในการนับ'].map(
-                        lambda q: f'นับเป็น {q}' if q in ('Q1','Q2') else 'ไม่นับ'
-                    )
+                q_used_col=find_col(detail,Q_USED)
+                q_tier_col=find_col(detail,Q_TIER)
+                if q_used_col:
+                    # ใช้ค่า Q จากคอลัมน์ต้นทางเป็นหลัก
+                    detail['Q ที่ใช้ในการนับ']=detail[q_used_col].map(lambda v: (lambda m: 'Q'+m.group(1) if m else '')(re.search(r'(?<![A-Z0-9])Q\\s*([12])(?![0-9])',clean(v).upper())))
+                elif base_col:
+                    detail['Q ที่ใช้ในการนับ']=detail.apply(lambda row: norm_q(row[base_col], clean(row[q_tier_col]) if q_tier_col else ''), axis=1)
                 else:
                     detail['Q ที่ใช้ในการนับ']=''
-                    detail['สถานะการนับ Q1-Q2']='ตรวจไม่พบคอลัมน์ฐานข้อมูล'
+                detail['สถานะการนับ Q1-Q2']=detail['Q ที่ใช้ในการนับ'].map(
+                    lambda q: f'นับเป็น {q}' if q in ('Q1','Q2') else 'ไม่นับ'
+                )
                 details.append(detail)
             combined_detail=pd.concat(details,ignore_index=True,sort=False)
             # ตัดแถวข้อมูลที่ซ้ำกันข้ามชีต/ไฟล์ โดยไม่ใช้ชื่อแหล่งข้อมูลเป็นเงื่อนไข
