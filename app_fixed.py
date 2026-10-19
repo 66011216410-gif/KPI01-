@@ -289,6 +289,8 @@ def make_excel(data,raw_sheets):
             ws['C3']='ระบบในเวลาราชการ';ws['D3']='ระบบนอกเวลาราชการ'
             for c in ['F','H','J','L']: ws[f'{c}3']='จำนวน';ws[f'{chr(ord(c)+1)}3']='ร้อยละ'
             ws['N3']='จำนวน';ws['O3']='ร้อยละ'
+            # ยืนยันหัวคอลัมน์ I3 ให้แสดงร้อยละของ SCOPUS Q2
+            ws['I3']='ร้อยละ'
             all_border=Border(left=thin,right=thin,top=thin,bottom=thin)
             for row in range(2,4):
                 for c in range(1,16):
