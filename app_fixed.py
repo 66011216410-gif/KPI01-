@@ -181,8 +181,13 @@ def metrics(df):
     q_col=df.get('__Q_นับ',df['__Q'])
     db_col=df.get('__ฐานข้อมูลประเภท',pd.Series('',index=df.index))
     def n(db,q):
+        # นับจำนวนคนจากรหัสนิสิตที่ไม่ซ้ำ ไม่ใช่นับจำนวนผลงาน
         mask=db_col.eq(db)&q_col.eq(q)
-        return int(df.loc[mask,'__ผลงาน_key'].nunique())
+        if '__รหัส' not in df.columns:
+            return 0
+        people=df.loc[mask,'__รหัส'].map(clean)
+        people=people[people.ne('')]
+        return int(people.nunique())
     sq1,sq2,wq1,wq2=n('SCOPUS','Q1'),n('SCOPUS','Q2'),n('WOS','Q1'),n('WOS','Q2')
     total=sq1+sq2+wq1+wq2
     pct=lambda x: round(x*100/a,2) if a else 0
