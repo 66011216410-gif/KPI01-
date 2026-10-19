@@ -88,7 +88,16 @@ def prepare_sheet(df,sheet_name,file_name=''):
         if f and f in faculty_group:g=faculty_group[f]
         elif p and p in program_group:g=program_group[p]
         canonical.append(g)
-    out['__ระดับ']=level;out['__กลุ่ม']=canonical;out['__คณะ']=faculty.map(clean);out['__สาขา']=program.map(clean);\n    # ใช้คอลัมน์ Q ที่ใช้ในการนับเป็นหลัก ไม่ดึง Q จากชื่อผลงานหรือคอลัมน์อื่น\n    def explicit_q(v):\n        m=re.search(r'(?<![A-Z0-9])Q\\s*([12])(?![0-9])',clean(v).upper())\n        return 'Q'+m.group(1) if m else ''\n    if q_used_col:\n        out['__Q']=out[q_used_col].map(explicit_q)\n    else:\n        out['__Q']=out.apply(lambda row: norm_q(row[base_col], clean(row[q_tier_col]) if q_tier_col else ''), axis=1)\n    out['__ระบบ']=out[system_col].map(norm_system);out['__รหัส']=out[student_col].map(clean) if student_col else '';out['__ลำดับ']=range(len(out))
+    out['__ระดับ']=level;out['__กลุ่ม']=canonical;out['__คณะ']=faculty.map(clean);out['__สาขา']=program.map(clean)
+    # ใช้คอลัมน์ Q ที่ใช้ในการนับเป็นหลัก ไม่ดึง Q จากชื่อผลงานหรือคอลัมน์อื่น
+    def explicit_q(v):
+        m=re.search(r'(?<![A-Z0-9])Q\s*([12])(?![0-9])',clean(v).upper())
+        return 'Q'+m.group(1) if m else ''
+    if q_used_col:
+        out['__Q']=out[q_used_col].map(explicit_q)
+    else:
+        out['__Q']=out.apply(lambda row: norm_q(row[base_col], clean(row[q_tier_col]) if q_tier_col else ''), axis=1)
+    out['__ระบบ']=out[system_col].map(norm_system);out['__รหัส']=out[student_col].map(clean) if student_col else '';out['__ลำดับ']=range(len(out))
     # สร้างรหัสผลงานเพื่อป้องกันการนับรายการเดียวซ้ำข้ามแถว/ชีต/ไฟล์
     def key_text(v):return re.sub(r'\s+',' ',clean(v)).strip().casefold()
     if doi_col:
