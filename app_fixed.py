@@ -264,6 +264,9 @@ def make_excel(data,raw_sheets):
     for ws in wb.worksheets:
         if ws.title in ['ปริญญาโท','ปริญญาเอก']:
             ws.insert_rows(1,3)
+            # ลบแถวหัวตารางเดิมและเว้นแถว เพื่อให้ข้อมูลเริ่มที่แถว 4
+            ws.delete_rows(4,3)
+            ws.delete_rows(4,1)
             ws.merge_cells('A1:O1')
             ws['A1']=PAGE_TITLE+' ระดับ'+ws.title
             ws['A1'].font=Font(bold=True,color='FFFFFF',size=16)
