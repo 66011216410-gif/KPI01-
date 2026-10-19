@@ -128,6 +128,9 @@ def read_excel(file_bytes,file_name=''):
                     # รวมชื่อหัวตารางย้อนหลังได้ไม่เกิน 3 แถว เช่น ฐานข้อมูล > Web of Science > Q1
                     for rr in range(max(0,idx-2),idx+1):
                         val=clean(raw_df.iat[rr,cc])
+                        # ข้ามข้อความชื่อรายงาน/ชื่อชีตที่ถูก merge คร่อมหัวตาราง ซึ่งทำให้ชื่อคอลัมน์ยาวและเพี้ยน
+                        if len(val) > 80:
+                            continue
                         if val and (not parts or val!=parts[-1]):
                             parts.append(val)
                     candidates.append(' | '.join(parts))
